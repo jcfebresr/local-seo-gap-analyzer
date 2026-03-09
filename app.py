@@ -1,7 +1,7 @@
 """
 Local SEO Geo-Gap Analyzer v2.2
 Sprint 1 - Fundamentos Críticos
-Production Ready
+Production Ready - Sin Warnings
 """
 
 import streamlit as st
@@ -199,19 +199,15 @@ def normalize_domain(domain_input):
     try:
         domain = domain_input.strip().lower()
         
-        # Si tiene protocolo, extraer con urlparse
         if domain.startswith(('http://', 'https://')):
             parsed = urlparse(domain)
             domain = parsed.netloc or parsed.path.split('/')[0]
         
-        # Remover path residual
         domain = domain.split('/')[0]
         
-        # Remover www.
         if domain.startswith('www.'):
             domain = domain[4:]
         
-        # Validar formato
         if not is_valid_domain(domain):
             return None
         
@@ -243,7 +239,6 @@ def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
         'comp3': normalize_domain(comp3),
     }
     
-    # Verificar válidos
     invalid = [k for k, v in domains.items() if v is None]
     if invalid:
         error = get_text('invalid_domain', lang)
@@ -256,7 +251,6 @@ def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
         invalid_labels = [labels[k] for k in invalid]
         return False, {}, f"{error}: {', '.join(invalid_labels)}"
     
-    # Verificar duplicados
     domain_list = list(domains.values())
     if len(domain_list) != len(set(domain_list)):
         return False, {}, f"❌ {get_text('duplicate_domains', lang)}"
@@ -285,7 +279,6 @@ def find_sitemap(domain, timeout=10):
         'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.2; +https://github.com/user/local-seo-gap)'
     }
     
-    # Método 1: URLs directas
     for path in sitemap_paths:
         try:
             url = urljoin(base_url, path)
@@ -303,7 +296,6 @@ def find_sitemap(domain, timeout=10):
         except:
             continue
     
-    # Método 2: robots.txt
     try:
         robots_url = urljoin(base_url, '/robots.txt')
         response = requests.get(robots_url, headers=headers, timeout=timeout)
@@ -326,7 +318,6 @@ def find_sitemap(domain, timeout=10):
     except:
         pass
     
-    # Método 3: No encontrado
     return {
         'sitemap_url': None,
         'method': 'none',
@@ -351,14 +342,12 @@ def detect_home_zone_from_domain(domain, service_key, lang="es"):
     domain_lower = domain.lower()
     cities = get_cities(lang)
     
-    # Método 1: Subdomain
     subdomain_match = re.match(r'^([a-z-]+)\.', domain_lower)
     if subdomain_match:
         potential_zone = subdomain_match.group(1)
         if potential_zone in cities:
             return potential_zone
     
-    # Método 2: Service-City patterns
     service_variations = [
         service_key,
         service_key + 's',
@@ -396,7 +385,6 @@ def detect_home_zone_from_homepage(domain, lang="es", timeout=10):
         soup = BeautifulSoup(response.text, 'html.parser')
         cities = get_cities(lang)
         
-        # Buscar en title
         title = soup.find('title')
         if title:
             title_text = unidecode(title.get_text().lower())
@@ -404,7 +392,6 @@ def detect_home_zone_from_homepage(domain, lang="es", timeout=10):
                 if city in title_text:
                     return city
         
-        # Buscar en h1
         h1 = soup.find('h1')
         if h1:
             h1_text = unidecode(h1.get_text().lower())
@@ -482,7 +469,6 @@ def extract_urls_from_sitemap(sitemap_url, max_urls=5000):
         df = adv.sitemap_to_df(sitemap_url)
         urls = df['loc'].tolist()
         
-        # Sampling si >5000
         if len(urls) > max_urls:
             import random
             urls = random.sample(urls, max_urls)
@@ -504,19 +490,15 @@ def filter_urls(urls, lang="es"):
     
     filtered = []
     for url in urls:
-        # Descartar patterns
         if any(pattern in url.lower() for pattern in discard_patterns):
             continue
         
-        # Descartar extensiones
         if any(url.lower().endswith(ext) for ext in extensions):
             continue
         
-        # Descartar query params
         if '?' in url:
             continue
         
-        # Verificar depth
         path = urlparse(url).path
         depth = len([p for p in path.split('/') if p])
         if depth > 3:
@@ -535,11 +517,9 @@ def extract_zone_from_url(url, cities, service_key, stop_words, lang="es"):
         if not slug:
             return None
         
-        # Limpiar slug
         cleaned = clean_slug(slug, stop_words, lang)
         cleaned = normalize_multi_word_zones(cleaned, lang)
         
-        # Buscar ciudad en slug limpio
         for city in cities:
             if city in cleaned:
                 return city
@@ -550,15 +530,12 @@ def extract_zone_from_url(url, cities, service_key, stop_words, lang="es"):
 
 def analyze_gaps(user_zones, comp_zones_list, home_zone):
     """Analiza gaps excluyendo home zone"""
-    # Union de competidores
     all_comp_zones = set()
     for comp_zones in comp_zones_list:
         all_comp_zones.update(comp_zones)
     
-    # Excluir home zone
     all_comp_zones.discard(home_zone)
     
-    # Gaps = lo que competidores tienen y usuario no
     user_zones_set = set(user_zones)
     user_zones_set.discard(home_zone)
     
@@ -576,7 +553,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Inicializar session state
 if 'lang' not in st.session_state:
     st.session_state.lang = 'es'
 
@@ -586,17 +562,15 @@ if 'home_zone_confirmed' not in st.session_state:
 if 'show_city_selector' not in st.session_state:
     st.session_state.show_city_selector = False
 
-# Header
 st.title(get_text('title', st.session_state.lang))
 
-# Sidebar - Idioma
 with st.sidebar:
     st.subheader(get_text('language', st.session_state.lang))
     lang_option = st.radio(
-        "Select language",  # Label no vacío
+        "Language selector",
         options=['🇪🇸 Español', '🇬🇧 English'],
         index=0 if st.session_state.lang == 'es' else 1,
-        label_visibility='collapsed'  # Se oculta visualmente pero existe para accesibilidad
+        label_visibility='collapsed'
     )
     
     new_lang = 'es' if '🇪🇸' in lang_option else 'en'
@@ -607,10 +581,8 @@ with st.sidebar:
 
 lang = st.session_state.lang
 
-# Configuración
 st.header("⚙️ " + ("Configuración" if lang == "es" else "Configuration"))
 
-# Servicio
 services_dict = get_services(lang)
 service_label = get_text('service', lang)
 selected_service_display = st.selectbox(
@@ -622,7 +594,6 @@ selected_service = [k for k, v in services_dict.items() if v == selected_service
 
 st.divider()
 
-# Dominios
 col1, col2 = st.columns(2)
 
 with col1:
@@ -674,7 +645,6 @@ with col2:
 
 st.divider()
 
-# Botón analizar
 analyze_button = st.button(
     get_text('analyze_button', lang),
     type="primary",
@@ -682,9 +652,7 @@ analyze_button = st.button(
     disabled=not all([user_domain_input, comp1_input, comp2_input, comp3_input])
 )
 
-# Procesamiento
 if analyze_button:
-    # Validar dominios
     success, normalized_domains, error_msg = validate_domains(
         user_domain_input, comp1_input, comp2_input, comp3_input, lang
     )
@@ -693,7 +661,6 @@ if analyze_button:
         st.error(error_msg)
         st.stop()
     
-    # Auto-discovery sitemaps
     st.subheader("🔍 " + get_text('extracting_urls', lang))
     
     with st.spinner(''):
@@ -715,7 +682,6 @@ if analyze_button:
     
     st.divider()
     
-    # Home zone detection
     if not st.session_state.home_zone_confirmed:
         st.subheader("🏠 " + get_text('home_zone_detected', lang))
         
@@ -757,12 +723,10 @@ if analyze_button:
         
         st.stop()
     
-    # Análisis principal
     st.success(f"✅ " + get_text('home_zone_detected', lang) + f": **{st.session_state.home_zone.title()}**")
     
     st.subheader("📊 " + get_text('processing', lang))
     
-    # Extraer URLs
     all_urls = {}
     all_counts = {}
     
@@ -788,7 +752,6 @@ if analyze_button:
     status_text.empty()
     progress_bar.empty()
     
-    # Filtrar URLs
     cities = get_cities(lang)
     stop_words = get_stop_words(lang)
     
@@ -804,21 +767,18 @@ if analyze_button:
         
         all_zones[key] = zones
     
-    # Analizar gaps
     gaps = analyze_gaps(
         all_zones['user'],
         [all_zones['comp1'], all_zones['comp2'], all_zones['comp3']],
         st.session_state.home_zone
     )
     
-    # Mostrar resultados
     st.divider()
     st.subheader(f"🎯 {get_text('gaps_found', lang)}: {len(gaps)}")
     
     if gaps:
         results_data = []
         for gap in sorted(gaps):
-            # Contar en cuántos competidores aparece
             comp_count = sum([
                 1 for comp_zones in [all_zones['comp1'], all_zones['comp2'], all_zones['comp3']]
                 if gap in comp_zones
@@ -833,7 +793,6 @@ if analyze_button:
         df_results = pd.DataFrame(results_data)
         st.dataframe(df_results, use_container_width=True, hide_index=True)
         
-        # Botón copiar slugs
         all_slugs = '\n'.join([row[get_text('slug', lang)] for row in results_data])
         st.download_button(
             "📋 " + ("Copiar todos los slugs" if lang == "es" else "Copy all slugs"),
