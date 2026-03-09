@@ -978,8 +978,37 @@ if analyze_button:
     progress_bar.empty()
     timer_placeholder.empty()
     
+    cities = get_cities(lang)
+    stop_words = get_stop_words(lang)
+    
+    # Timer para procesamiento de zonas
+    timer_placeholder = st.empty()
+    start_time = time.time()
+    
+    # Procesar con confidence scoring
+    all_zones_data = {}
+    for key, urls in all_urls.items():
+        elapsed = int(time.time() - start_time)
+        timer_placeholder.caption(f"⏱️ {get_text('processing', lang)}: {elapsed}s")
+        
+        filtered = filter_urls(urls, lang)
+        zones_data = []
+        filtered_by_service = 0
+        
+        for url in filtered:
+            zone, confidence = extract_zone_from_url(url, cities, selected_service, stop_words, lang)
+            if zone:
+                zones_data.append((zone, confidence, url))
+            elif not is_url_valid_for_service(url, selected_service, lang):
+                filtered_by_service += 1
+        
+        all_zones_data[key] = zones_data
+        filtered_counts[key] = filtered_by_service
+    
+    timer_placeholder.empty()
+    
     # ════════════════════════════════════════════════════════════
-    # COMPETITOR QUALITY CARDS (NUEVO - SPRINT 3.2)
+    # COMPETITOR QUALITY CARDS - AHORA DESPUÉS DE all_zones_data
     # ════════════════════════════════════════════════════════════
     
     st.divider()
@@ -994,13 +1023,7 @@ if analyze_button:
         total_urls = all_counts[key]['total'] if all_counts[key]['total'] > 0 else all_counts[key]['extracted']
         extracted_urls = all_counts[key]['extracted']
         
-        # URLs antes del filtrado
-        urls_before_filter = len(all_urls[key])
-        
-        # URLs después del filtrado
-        urls_after_filter = len(filter_urls(all_urls[key], lang))
-        
-        # Zonas únicas detectadas
+        # Zonas únicas detectadas (all_zones_data YA EXISTE AQUÍ)
         unique_zones = len(set([z for z, _, _ in all_zones_data[key]]))
         
         # URLs filtradas por servicio diferente
@@ -1089,31 +1112,6 @@ if analyze_button:
     # ════════════════════════════════════════════════════════════
     # FIN COMPETITOR QUALITY CARDS
     # ════════════════════════════════════════════════════════════
-    
-    cities = get_cities(lang)
-    stop_words = get_stop_words(lang)
-    
-    # Procesar con confidence scoring
-    all_zones_data = {}
-    for key, urls in all_urls.items():
-        filtered = filter_urls(urls, lang)
-        zones_data = []
-        filtered_by_service = 0
-        
-        for url in filtered:
-            zone, confidence = extract_zone_from_url(url, cities, selected_service, stop_words, lang)
-            if zone:
-                zones_data.append((zone, confidence, url))
-            elif not is_url_valid_for_service(url, selected_service, lang):
-                filtered_by_service += 1
-        
-        all_zones_data[key] = zones_data
-        filtered_counts[key] = filtered_by_service
-    
-    # Mostrar estadísticas de filtrado
-    if any(filtered_counts.values()):
-        st.info(f"ℹ️ {get_text('urls_filtered', lang)}: " + 
-                ", ".join([f"{k}: {v}" for k, v in filtered_counts.items() if v > 0]))
     
     # Análisis comprehensivo
     analysis = analyze_comprehensive(
