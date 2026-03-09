@@ -321,22 +321,25 @@ def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
 # ============================================
 
 def find_sitemap(domain, timeout=10):
+    """Busca automáticamente el sitemap con orden de prioridad corregido"""
     base_url = f"https://{domain}"
     
+    # ORDEN CORREGIDO: sitemap_index.xml PRIMERO (más común en WordPress/Yoast)
     sitemap_paths = [
-        '/sitemap.xml',
-        '/sitemap_index.xml',
-        '/sitemap-index.xml',
-        '/post-sitemap.xml',
-        '/page-sitemap.xml',
-        '/wp-sitemap.xml',
-        '/sitemap.php',
+        '/sitemap_index.xml',      # Primero - Yoast SEO, Rank Math
+        '/sitemap.xml',             # Segundo - Genérico
+        '/sitemap-index.xml',       # Variante con guión
+        '/wp-sitemap.xml',          # WordPress nativo
+        '/post-sitemap.xml',        # Yoast posts
+        '/page-sitemap.xml',        # Yoast pages
+        '/sitemap.php',             # Dinámico
     ]
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.2; +https://github.com/user/local-seo-gap)'
     }
     
+    # Método 1: URLs directas
     for path in sitemap_paths:
         try:
             url = urljoin(base_url, path)
@@ -351,9 +354,11 @@ def find_sitemap(domain, timeout=10):
                         'success': True,
                         'message': f"✅ {path}"
                     }
-        except:
+        except Exception as e:
+            # Continuar con siguiente path si falla
             continue
     
+    # Método 2: robots.txt
     try:
         robots_url = urljoin(base_url, '/robots.txt')
         response = requests.get(robots_url, headers=headers, timeout=timeout)
@@ -376,6 +381,7 @@ def find_sitemap(domain, timeout=10):
     except:
         pass
     
+    # Método 3: No encontrado
     return {
         'sitemap_url': None,
         'method': 'none',
