@@ -970,6 +970,118 @@ if analyze_button:
     status_text.empty()
     progress_bar.empty()
     
+    # ════════════════════════════════════════════════════════════
+    # COMPETITOR QUALITY CARDS (NUEVO - SPRINT 3.2)
+    # ════════════════════════════════════════════════════════════
+    
+    st.divider()
+    st.subheader("📊 " + ("Calidad de Datos Extraídos" if lang == "es" else "Data Quality Summary"))
+    
+    # Preparar datos de calidad
+    quality_data = {}
+    
+    for key in ['user', 'comp1', 'comp2', 'comp3']:
+        domain = normalized_domains[key]
+        sitemap_result = sitemap_results[key]
+        total_urls = all_counts[key]['total'] if all_counts[key]['total'] > 0 else all_counts[key]['extracted']
+        extracted_urls = all_counts[key]['extracted']
+        
+        # URLs antes del filtrado
+        urls_before_filter = len(all_urls[key])
+        
+        # URLs después del filtrado
+        urls_after_filter = len(filter_urls(all_urls[key], lang))
+        
+        # Zonas únicas detectadas
+        unique_zones = len(set([z for z, _, _ in all_zones_data[key]]))
+        
+        # URLs filtradas por servicio diferente
+        filtered_by_service = filtered_counts.get(key, 0)
+        
+        quality_data[key] = {
+            'domain': domain,
+            'sitemap_method': sitemap_result['message'],
+            'total_urls': total_urls,
+            'extracted_urls': extracted_urls,
+            'valid_urls': len([z for z, _, _ in all_zones_data[key]]),
+            'filtered_by_service': filtered_by_service,
+            'unique_zones': unique_zones,
+            'success_rate': int((len([z for z, _, _ in all_zones_data[key]]) / extracted_urls * 100)) if extracted_urls > 0 else 0
+        }
+    
+    # Mostrar cards en 2 filas x 2 columnas
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Card Usuario
+        data = quality_data['user']
+        with st.container():
+            if lang == "es":
+                st.markdown(f"**🏠 Tu dominio: {data['domain']}**")
+            else:
+                st.markdown(f"**🏠 Your domain: {data['domain']}**")
+            
+            st.caption(data['sitemap_method'])
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("📊 URLs totales", data['total_urls'])
+                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
+            with col_b:
+                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
+                st.metric("🗺️ Zonas únicas", data['unique_zones'])
+        
+        st.divider()
+        
+        # Card Competidor 2
+        data = quality_data['comp2']
+        with st.container():
+            st.markdown(f"**🔍 {get_text('competitor', lang)} 2: {data['domain']}**")
+            st.caption(data['sitemap_method'])
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("📊 URLs totales", data['total_urls'])
+                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
+            with col_b:
+                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
+                st.metric("🗺️ Zonas únicas", data['unique_zones'])
+    
+    with col2:
+        # Card Competidor 1
+        data = quality_data['comp1']
+        with st.container():
+            st.markdown(f"**🔍 {get_text('competitor', lang)} 1: {data['domain']}**")
+            st.caption(data['sitemap_method'])
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("📊 URLs totales", data['total_urls'])
+                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
+            with col_b:
+                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
+                st.metric("🗺️ Zonas únicas", data['unique_zones'])
+        
+        st.divider()
+        
+        # Card Competidor 3
+        data = quality_data['comp3']
+        with st.container():
+            st.markdown(f"**🔍 {get_text('competitor', lang)} 3: {data['domain']}**")
+            st.caption(data['sitemap_method'])
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("📊 URLs totales", data['total_urls'])
+                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
+            with col_b:
+                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
+                st.metric("🗺️ Zonas únicas", data['unique_zones'])
+    
+    # ════════════════════════════════════════════════════════════
+    # FIN COMPETITOR QUALITY CARDS
+    # ════════════════════════════════════════════════════════════
+    
     cities = get_cities(lang)
     stop_words = get_stop_words(lang)
     
