@@ -847,7 +847,8 @@ if analyze_button:
     
     st.divider()
     
-    if not st.session_state.home_zone_confirmed:
+    # DETECCIÓN AUTOMÁTICA SIN CONFIRMACIÓN (TEMPORAL PARA TESTING)
+    if 'home_zone' not in st.session_state:
         st.subheader("🏠 " + get_text('home_zone_detected', lang))
         
         with st.spinner(''):
@@ -857,55 +858,22 @@ if analyze_button:
                 lang
             )
         
-        if home_zone_result['zone'] and not st.session_state.show_city_selector:
-            st.info(f"{get_text('home_zone_detected', lang)}: **{home_zone_result['zone'].title()}**")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button(get_text('yes', lang), use_container_width=True, key="confirm_zone_yes"):
-                    st.session_state.home_zone = home_zone_result['zone']
-                    st.session_state.home_zone_confirmed = True
-                    st.session_state.analysis_data = {
-                        'domains': normalized_domains,
-                        'sitemaps': sitemap_results,
-                        'service': selected_service
-                    }
-                    st.rerun()
-            
-            with col2:
-                if st.button(get_text('no', lang), use_container_width=True, key="confirm_zone_no"):
-                    st.session_state.show_city_selector = True
-                    st.rerun()
-        
-        if home_zone_result['zone'] is None or st.session_state.show_city_selector:
+        if home_zone_result['zone']:
+            # AUTO-CONFIRMAR detectada
+            st.session_state.home_zone = home_zone_result['zone']
+            st.success(f"✅ {get_text('home_zone_detected', lang)}: **{home_zone_result['zone'].title()}** (auto-detectada)")
+        else:
+            # Si no detecta, usar dropdown
             cities = get_cities(lang)
             manual_zone = st.selectbox(
                 get_text('select_city', lang),
                 options=cities,
-                index=0,
-                key="manual_zone_select"
+                index=0
             )
-            
-            if st.button("✓ " + get_text('confirm', lang), key="confirm_manual_zone"):
-                st.session_state.home_zone = manual_zone
-                st.session_state.home_zone_confirmed = True
-                st.session_state.show_city_selector = False
-                st.session_state.analysis_data = {
-                    'domains': normalized_domains,
-                    'sitemaps': sitemap_results,
-                    'service': selected_service
-                }
-                st.rerun()
-        
-        st.stop()
-    
-    # Recuperar datos del análisis
-    if 'analysis_data' in st.session_state:
-        normalized_domains = st.session_state.analysis_data['domains']
-        sitemap_results = st.session_state.analysis_data['sitemaps']
-        selected_service = st.session_state.analysis_data['service']
-    
-    st.success(f"✅ " + get_text('home_zone_detected', lang) + f": **{st.session_state.home_zone.title()}**")
+            st.session_state.home_zone = manual_zone
+            st.info(f"ℹ️ Zona seleccionada manualmente: **{manual_zone.title()}**")
+    else:
+        st.success(f"✅ " + get_text('home_zone_detected', lang) + f": **{st.session_state.home_zone.title()}**")
     
     st.subheader("📊 " + get_text('processing', lang))
     
