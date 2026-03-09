@@ -951,9 +951,16 @@ if analyze_button:
     progress_bar = st.progress(0)
     status_text = st.empty()
     
+    # Timer visual
+    timer_placeholder = st.empty()
+    start_time = time.time()
+    
     for idx, key in enumerate(['user', 'comp1', 'comp2', 'comp3']):
         domain = normalized_domains[key]
         sitemap_result = sitemap_results[key]
+        
+        elapsed = int(time.time() - start_time)
+        timer_placeholder.caption(f"⏱️ Tiempo transcurrido: {elapsed}s")
         
         status_text.text(f"{get_text('processing', lang)}: {domain}")
         
@@ -969,6 +976,7 @@ if analyze_button:
     
     status_text.empty()
     progress_bar.empty()
+    timer_placeholder.empty()
     
     # ════════════════════════════════════════════════════════════
     # COMPETITOR QUALITY CARDS (NUEVO - SPRINT 3.2)
