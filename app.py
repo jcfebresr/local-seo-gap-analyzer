@@ -857,18 +857,23 @@ if analyze_button:
                 lang
             )
         
-        if home_zone_result['zone']:
+        if home_zone_result['zone'] and not st.session_state.show_city_selector:
             st.info(f"{get_text('home_zone_detected', lang)}: **{home_zone_result['zone'].title()}**")
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button(get_text('yes', lang), use_container_width=True):
+                if st.button(get_text('yes', lang), use_container_width=True, key="confirm_zone_yes"):
                     st.session_state.home_zone = home_zone_result['zone']
                     st.session_state.home_zone_confirmed = True
+                    st.session_state.analysis_data = {
+                        'domains': normalized_domains,
+                        'sitemaps': sitemap_results,
+                        'service': selected_service
+                    }
                     st.rerun()
             
             with col2:
-                if st.button(get_text('no', lang), use_container_width=True):
+                if st.button(get_text('no', lang), use_container_width=True, key="confirm_zone_no"):
                     st.session_state.show_city_selector = True
                     st.rerun()
         
@@ -877,16 +882,28 @@ if analyze_button:
             manual_zone = st.selectbox(
                 get_text('select_city', lang),
                 options=cities,
-                index=0
+                index=0,
+                key="manual_zone_select"
             )
             
-            if st.button("✓ " + get_text('confirm', lang)):
+            if st.button("✓ " + get_text('confirm', lang), key="confirm_manual_zone"):
                 st.session_state.home_zone = manual_zone
                 st.session_state.home_zone_confirmed = True
                 st.session_state.show_city_selector = False
+                st.session_state.analysis_data = {
+                    'domains': normalized_domains,
+                    'sitemaps': sitemap_results,
+                    'service': selected_service
+                }
                 st.rerun()
         
         st.stop()
+    
+    # Recuperar datos del análisis
+    if 'analysis_data' in st.session_state:
+        normalized_domains = st.session_state.analysis_data['domains']
+        sitemap_results = st.session_state.analysis_data['sitemaps']
+        selected_service = st.session_state.analysis_data['service']
     
     st.success(f"✅ " + get_text('home_zone_detected', lang) + f": **{st.session_state.home_zone.title()}**")
     
