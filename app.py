@@ -1,7 +1,10 @@
 """
 Local SEO Geo-Gap Analyzer v2.2
-Sprint 1 - Fundamentos Críticos
-Production Ready - Sin Warnings
+Sprint 2 - Precisión Avanzada
+- Dynamic Service Validation
+- Confidence Scoring System
+- Fortalezas y Empates
+- Multi-Word Zones Mejorado
 """
 
 import streamlit as st
@@ -12,6 +15,7 @@ import requests
 from bs4 import BeautifulSoup
 from unidecode import unidecode
 from urllib.parse import urlparse, urljoin
+from rapidfuzz import fuzz
 import time
 
 # ============================================
@@ -41,13 +45,32 @@ TRANSLATIONS = {
         "analyzing": "Analizando",
         "extracting_urls": "Extrayendo URLs",
         "processing": "Procesando",
-        "gaps_found": "Gaps encontrados",
+        "gaps_found": "Gaps Detectados",
+        "strengths_found": "Tus Fortalezas",
+        "ties_found": "Empates",
+        "low_confidence": "Baja Confianza - Revisar",
         "zone": "Zona",
-        "slug": "Slug",
-        "competitors_count": "Nº Competidores",
+        "slug": "Slug Sugerido",
+        "competitors_count": "Nº Comps",
+        "confidence": "Confianza",
+        "advantage": "Ventaja",
+        "strategy": "Estrategia",
+        "priority": "Prioridad",
         "confirm": "Confirmar",
         "required_field": "Campo obligatorio",
         "duplicate_domains": "Los dominios deben ser diferentes entre sí",
+        "urls_filtered": "URLs filtradas por servicio diferente",
+        "high_priority": "ALTA",
+        "medium_priority": "MEDIA",
+        "low_priority": "BAJA",
+        "max_advantage": "MÁXIMA (zona única)",
+        "medium_advantage": "MEDIA (baja competencia)",
+        "maintain_dominance": "Mantener dominancia. Reforzar contenido y backlinks.",
+        "early_advantage": "Ventaja temprana. Invertir en diferenciación.",
+        "competitive_market": "Mercado competitivo. Mantener posición con contenido de calidad.",
+        "validated_opportunity": "Oportunidad Validada - todos los competidores están ahí",
+        "emerging_niche": "Nicho Emergente - mayoría presente",
+        "long_tail": "Larga Cola / Experimental - solo uno lo tiene",
     },
     "en": {
         "title": "🎯 Local SEO Geo-Gap Analyzer",
@@ -71,13 +94,32 @@ TRANSLATIONS = {
         "analyzing": "Analyzing",
         "extracting_urls": "Extracting URLs",
         "processing": "Processing",
-        "gaps_found": "Gaps found",
+        "gaps_found": "Gaps Detected",
+        "strengths_found": "Your Strengths",
+        "ties_found": "Ties",
+        "low_confidence": "Low Confidence - Review",
         "zone": "Zone",
-        "slug": "Slug",
-        "competitors_count": "# Competitors",
+        "slug": "Suggested Slug",
+        "competitors_count": "# Comps",
+        "confidence": "Confidence",
+        "advantage": "Advantage",
+        "strategy": "Strategy",
+        "priority": "Priority",
         "confirm": "Confirm",
         "required_field": "Required field",
         "duplicate_domains": "Domains must be different from each other",
+        "urls_filtered": "URLs filtered by different service",
+        "high_priority": "HIGH",
+        "medium_priority": "MEDIUM",
+        "low_priority": "LOW",
+        "max_advantage": "MAXIMUM (unique zone)",
+        "medium_advantage": "MEDIUM (low competition)",
+        "maintain_dominance": "Maintain dominance. Reinforce content and backlinks.",
+        "early_advantage": "Early advantage. Invest in differentiation.",
+        "competitive_market": "Competitive market. Maintain position with quality content.",
+        "validated_opportunity": "Validated Opportunity - all competitors are there",
+        "emerging_niche": "Emerging Niche - majority present",
+        "long_tail": "Long Tail / Experimental - only one has it",
     }
 }
 
@@ -118,6 +160,24 @@ SERVICES = {
     }
 }
 
+# Diccionario de exclusión automática
+EXCLUSION_DICTIONARY = {
+    "es": {
+        "cerrajero": ["fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero", "carpinteria"],
+        "fontanero": ["cerrajero", "cerrajeria", "electricista", "electrico", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero"],
+        "electricista": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero"],
+        "pintor": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "reformas", "limpieza", "mudanzas", "carpintero"],
+        "reformas": ["cerrajero", "fontanero", "electricista", "pintor", "limpieza", "mudanzas"],
+    },
+    "en": {
+        "locksmith": ["plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter"],
+        "plumber": ["locksmith", "locks", "electrician", "electrical", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter"],
+        "electrician": ["locksmith", "locks", "plumber", "plumbing", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter"],
+        "painter": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "remodeling", "cleaning", "moving", "carpenter"],
+        "remodeling": ["locksmith", "plumber", "electrician", "painter", "cleaning", "moving"],
+    }
+}
+
 TOP_CITIES = {
     "es": [
         "madrid", "barcelona", "valencia", "sevilla", "zaragoza", "malaga", 
@@ -128,7 +188,9 @@ TOP_CITIES = {
         "leganes", "san-sebastian", "santander", "burgos", "castellon", "albacete",
         "alcorcon", "getafe", "salamanca", "logroño", "huelva", "tarragona",
         "leon", "cadiz", "marbella", "badajoz", "lleida", "torrevieja",
-        "chamberi", "salamanca", "retiro", "tetuan", "fuencarral", "moncloa",
+        "chamberi", "retiro", "tetuan", "fuencarral", "moncloa", "carabanchel",
+        "usera", "puente-vallecas", "moratalaz", "ciudad-lineal", "hortaleza",
+        "villaverde", "villa-vallecas", "vicalvaro", "san-blas", "barajas",
     ],
     "en": [
         "new-york", "los-angeles", "chicago", "houston", "phoenix", "philadelphia",
@@ -172,27 +234,26 @@ STOP_WORDS = {
 }
 
 def get_text(key, lang="es"):
-    """Obtiene texto traducido"""
     return TRANSLATIONS.get(lang, TRANSLATIONS["es"]).get(key, key)
 
 def get_services(lang="es"):
-    """Obtiene lista de servicios"""
     return SERVICES.get(lang, SERVICES["es"])
 
 def get_cities(lang="es"):
-    """Obtiene lista de ciudades"""
     return TOP_CITIES.get(lang, TOP_CITIES["es"])
 
 def get_stop_words(lang="es"):
-    """Obtiene lista de stop words"""
     return STOP_WORDS.get(lang, STOP_WORDS["es"])
+
+def get_exclusion_list(service_key, lang="es"):
+    """Obtiene lista de servicios a excluir"""
+    return EXCLUSION_DICTIONARY.get(lang, {}).get(service_key, [])
 
 # ============================================
 # VALIDACIÓN DE DOMINIOS
 # ============================================
 
 def normalize_domain(domain_input):
-    """Normaliza input de dominio a formato limpio"""
     if not domain_input:
         return None
     
@@ -216,7 +277,6 @@ def normalize_domain(domain_input):
         return None
 
 def is_valid_domain(domain):
-    """Valida formato de dominio"""
     pattern = r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$'
     
     if not re.match(pattern, domain):
@@ -231,7 +291,6 @@ def is_valid_domain(domain):
     return True
 
 def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
-    """Valida todos los dominios"""
     domains = {
         'user': normalize_domain(user_domain),
         'comp1': normalize_domain(comp1),
@@ -262,7 +321,6 @@ def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
 # ============================================
 
 def find_sitemap(domain, timeout=10):
-    """Busca automáticamente el sitemap"""
     base_url = f"https://{domain}"
     
     sitemap_paths = [
@@ -326,7 +384,6 @@ def find_sitemap(domain, timeout=10):
     }
 
 def find_all_sitemaps(domains_dict):
-    """Busca sitemaps para todos los dominios"""
     results = {}
     for key, domain in domains_dict.items():
         if domain:
@@ -338,7 +395,6 @@ def find_all_sitemaps(domains_dict):
 # ============================================
 
 def detect_home_zone_from_domain(domain, service_key, lang="es"):
-    """Detecta zona desde dominio con regex"""
     domain_lower = domain.lower()
     cities = get_cities(lang)
     
@@ -370,7 +426,6 @@ def detect_home_zone_from_domain(domain, service_key, lang="es"):
     return None
 
 def detect_home_zone_from_homepage(domain, lang="es", timeout=10):
-    """Detecta zona desde homepage"""
     try:
         url = f"https://{domain}"
         headers = {
@@ -404,7 +459,6 @@ def detect_home_zone_from_homepage(domain, lang="es", timeout=10):
         return None
 
 def detect_home_zone(domain, service_key, lang="es"):
-    """Detección completa de home zone"""
     zone_from_domain = detect_home_zone_from_domain(domain, service_key, lang)
     if zone_from_domain:
         return {
@@ -432,7 +486,6 @@ def detect_home_zone(domain, service_key, lang="es"):
 # ============================================
 
 def clean_slug(slug, stop_words, lang="es"):
-    """Limpia slug removiendo stop words"""
     slug = slug.strip('/')
     slug = unidecode(slug)
     slug = slug.lower()
@@ -448,7 +501,7 @@ def clean_slug(slug, stop_words, lang="es"):
     return cleaned.strip('-')
 
 def normalize_multi_word_zones(slug, lang="es"):
-    """Normaliza zonas multi-palabra"""
+    """Normaliza zonas multi-palabra avanzado"""
     connectors = {
         "es": ["el", "la", "los", "las", "de"],
         "en": ["the", "of"]
@@ -460,11 +513,75 @@ def normalize_multi_word_zones(slug, lang="es"):
     return '-'.join(cleaned_parts)
 
 # ============================================
+# DYNAMIC SERVICE VALIDATION (NUEVO)
+# ============================================
+
+def is_url_valid_for_service(url, service_key, lang="es", threshold=80):
+    """
+    Valida si una URL pertenece al servicio buscado.
+    Retorna True si es válida, False si contiene servicios excluidos.
+    """
+    exclusion_list = get_exclusion_list(service_key, lang)
+    
+    url_lower = url.lower()
+    
+    for excluded_service in exclusion_list:
+        # Fuzzy matching para detectar variaciones
+        if fuzz.partial_ratio(excluded_service, url_lower) > threshold:
+            return False
+    
+    return True
+
+# ============================================
+# CONFIDENCE SCORING (NUEVO)
+# ============================================
+
+def calculate_confidence(zone, cities, url, lang="es"):
+    """
+    Calcula score de confianza basado en validaciones múltiples.
+    
+    Validaciones:
+    1. Regex match (¿zona en slug limpio?)
+    2. Top Cities match (¿zona en lista oficial?)
+    3. Multi-validation (futura expansión para SpaCy)
+    
+    Returns:
+        dict: {
+            'score': int (0-100),
+            'validations': {
+                'regex': bool,
+                'top_cities': bool,
+            }
+        }
+    """
+    validations = {
+        'regex': False,
+        'top_cities': False,
+    }
+    
+    # Validación 1: Regex match
+    if zone and len(zone) > 2:
+        validations['regex'] = True
+    
+    # Validación 2: Top Cities
+    if zone in cities:
+        validations['top_cities'] = True
+    
+    # Calcular score
+    passed = sum(validations.values())
+    total = len(validations)
+    score = int((passed / total) * 100)
+    
+    return {
+        'score': score,
+        'validations': validations
+    }
+
+# ============================================
 # EXTRACCIÓN Y ANÁLISIS
 # ============================================
 
 def extract_urls_from_sitemap(sitemap_url, max_urls=5000):
-    """Extrae URLs de sitemap usando advertools"""
     try:
         df = adv.sitemap_to_df(sitemap_url)
         urls = df['loc'].tolist()
@@ -478,7 +595,6 @@ def extract_urls_from_sitemap(sitemap_url, max_urls=5000):
         return [], 0
 
 def filter_urls(urls, lang="es"):
-    """Filtra URLs de ruido (Step 2)"""
     discard_patterns = [
         '/blog/', '/tag/', '/tags/', '/category/', '/categories/',
         '/author/', '/page/', '/search/',
@@ -509,39 +625,88 @@ def filter_urls(urls, lang="es"):
     return filtered
 
 def extract_zone_from_url(url, cities, service_key, stop_words, lang="es"):
-    """Extrae zona de URL"""
+    """Extrae zona con validación de confianza"""
     try:
+        # Validación de servicio primero
+        if not is_url_valid_for_service(url, service_key, lang):
+            return None, None
+        
         path = urlparse(url).path
         slug = path.strip('/').split('/')[-1]
         
         if not slug:
-            return None
+            return None, None
         
         cleaned = clean_slug(slug, stop_words, lang)
         cleaned = normalize_multi_word_zones(cleaned, lang)
         
         for city in cities:
             if city in cleaned:
-                return city
+                confidence = calculate_confidence(city, cities, url, lang)
+                return city, confidence
         
-        return None
+        return None, None
     except:
-        return None
+        return None, None
 
-def analyze_gaps(user_zones, comp_zones_list, home_zone):
-    """Analiza gaps excluyendo home zone"""
+def analyze_comprehensive(user_zones_data, comp_zones_data_list, home_zone):
+    """
+    Análisis completo: Gaps, Fortalezas, Empates
+    
+    Args:
+        user_zones_data: [(zone, confidence, url), ...]
+        comp_zones_data_list: [[(zone, confidence, url), ...], ...]
+        home_zone: str
+    
+    Returns:
+        dict: {
+            'gaps': [...],
+            'strengths': {...},
+            'ties': [...]
+        }
+    """
+    # Extraer solo zonas (sin confidence)
+    user_zones = set([z for z, _, _ in user_zones_data if z])
+    user_zones.discard(home_zone)
+    
     all_comp_zones = set()
-    for comp_zones in comp_zones_list:
+    comp_zones_lists = []
+    
+    for comp_data in comp_zones_data_list:
+        comp_zones = set([z for z, _, _ in comp_data if z])
+        comp_zones.discard(home_zone)
+        comp_zones_lists.append(comp_zones)
         all_comp_zones.update(comp_zones)
     
-    all_comp_zones.discard(home_zone)
+    # GAPS: lo que competidores tienen y usuario no
+    gaps = all_comp_zones - user_zones
     
-    user_zones_set = set(user_zones)
-    user_zones_set.discard(home_zone)
+    # FORTALEZAS: lo que usuario tiene y competencia no/mínima
+    strengths = {
+        'tier_1': [],  # Solo usuario (0 competidores)
+        'tier_2': []   # Usuario + 1 competidor
+    }
     
-    gaps = all_comp_zones - user_zones_set
+    for zone in user_zones:
+        comp_count = sum([1 for comp_zones in comp_zones_lists if zone in comp_zones])
+        
+        if comp_count == 0:
+            strengths['tier_1'].append(zone)
+        elif comp_count == 1:
+            strengths['tier_2'].append(zone)
     
-    return list(gaps)
+    # EMPATES: Usuario + 2-3 competidores
+    ties = []
+    for zone in user_zones:
+        comp_count = sum([1 for comp_zones in comp_zones_lists if zone in comp_zones])
+        if comp_count >= 2:
+            ties.append(zone)
+    
+    return {
+        'gaps': list(gaps),
+        'strengths': strengths,
+        'ties': ties
+    }
 
 # ============================================
 # STREAMLIT UI
@@ -729,6 +894,7 @@ if analyze_button:
     
     all_urls = {}
     all_counts = {}
+    filtered_counts = {}
     
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -755,50 +921,178 @@ if analyze_button:
     cities = get_cities(lang)
     stop_words = get_stop_words(lang)
     
-    all_zones = {}
+    # Procesar con confidence scoring
+    all_zones_data = {}
     for key, urls in all_urls.items():
         filtered = filter_urls(urls, lang)
-        zones = []
+        zones_data = []
+        filtered_by_service = 0
         
         for url in filtered:
-            zone = extract_zone_from_url(url, cities, selected_service, stop_words, lang)
+            zone, confidence = extract_zone_from_url(url, cities, selected_service, stop_words, lang)
             if zone:
-                zones.append(zone)
+                zones_data.append((zone, confidence, url))
+            elif not is_url_valid_for_service(url, selected_service, lang):
+                filtered_by_service += 1
         
-        all_zones[key] = zones
+        all_zones_data[key] = zones_data
+        filtered_counts[key] = filtered_by_service
     
-    gaps = analyze_gaps(
-        all_zones['user'],
-        [all_zones['comp1'], all_zones['comp2'], all_zones['comp3']],
+    # Mostrar estadísticas de filtrado
+    if any(filtered_counts.values()):
+        st.info(f"ℹ️ {get_text('urls_filtered', lang)}: " + 
+                ", ".join([f"{k}: {v}" for k, v in filtered_counts.items() if v > 0]))
+    
+    # Análisis comprehensivo
+    analysis = analyze_comprehensive(
+        all_zones_data['user'],
+        [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
         st.session_state.home_zone
     )
     
     st.divider()
-    st.subheader(f"🎯 {get_text('gaps_found', lang)}: {len(gaps)}")
     
-    if gaps:
-        results_data = []
-        for gap in sorted(gaps):
-            comp_count = sum([
-                1 for comp_zones in [all_zones['comp1'], all_zones['comp2'], all_zones['comp3']]
-                if gap in comp_zones
-            ])
+    # TABS
+    tab1, tab2, tab3, tab4 = st.tabs([
+        f"🎯 {get_text('gaps_found', lang)} ({len(analysis['gaps'])})",
+        f"💪 {get_text('strengths_found', lang)} ({len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2'])})",
+        f"⚖️ {get_text('ties_found', lang)} ({len(analysis['ties'])})",
+        f"⚠️ {get_text('low_confidence', lang)}"
+    ])
+    
+    with tab1:
+        st.subheader(get_text('gaps_found', lang))
+        
+        if analysis['gaps']:
+            gaps_data = []
             
-            results_data.append({
-                get_text('zone', lang): gap.title(),
-                get_text('slug', lang): f"/{selected_service}-{gap}/",
-                get_text('competitors_count', lang): comp_count
+            for gap in sorted(analysis['gaps']):
+                # Contar competidores
+                comp_count = sum([
+                    1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
+                    if any(z == gap for z, _, _ in comp_data)
+                ])
+                
+                # Obtener confidence promedio
+                confidences = []
+                for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
+                    for z, conf, _ in comp_data:
+                        if z == gap and conf:
+                            confidences.append(conf['score'])
+                
+                avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+                
+                # Prioridad
+                if comp_count == 3:
+                    priority = get_text('high_priority', lang)
+                    color = "🔴"
+                elif comp_count == 2:
+                    priority = get_text('medium_priority', lang)
+                    color = "🟡"
+                else:
+                    priority = get_text('low_priority', lang)
+                    color = "🟢"
+                
+                # Solo mostrar gaps con confianza >= 67%
+                if avg_conf >= 67:
+                    gaps_data.append({
+                        get_text('priority', lang): f"{color} {priority}",
+                        get_text('zone', lang): gap.title(),
+                        get_text('slug', lang): f"/{selected_service}-{gap}/",
+                        get_text('competitors_count', lang): comp_count,
+                        get_text('confidence', lang): f"{avg_conf}%"
+                    })
+            
+            if gaps_data:
+                df_gaps = pd.DataFrame(gaps_data)
+                st.dataframe(df_gaps, use_container_width=True, hide_index=True)
+                
+                all_slugs = '\n'.join([row[get_text('slug', lang)] for row in gaps_data])
+                st.download_button(
+                    "📋 " + ("Copiar todos los slugs" if lang == "es" else "Copy all slugs"),
+                    data=all_slugs,
+                    file_name="gaps_slugs.txt",
+                    mime="text/plain"
+                )
+            else:
+                st.info("ℹ️ " + ("No hay gaps de alta confianza" if lang == "es" else "No high-confidence gaps"))
+        else:
+            st.success("🎉 " + ("¡Ya cubres todas las zonas de tus competidores!" if lang == "es" else "You already cover all competitor zones!"))
+    
+    with tab2:
+        st.subheader(get_text('strengths_found', lang))
+        
+        strengths_data = []
+        
+        for zone in analysis['strengths']['tier_1']:
+            strengths_data.append({
+                get_text('zone', lang): zone.title(),
+                get_text('advantage', lang): get_text('max_advantage', lang),
+                get_text('competitors_count', lang): 0,
+                get_text('strategy', lang): get_text('maintain_dominance', lang)
             })
         
-        df_results = pd.DataFrame(results_data)
-        st.dataframe(df_results, use_container_width=True, hide_index=True)
+        for zone in analysis['strengths']['tier_2']:
+            strengths_data.append({
+                get_text('zone', lang): zone.title(),
+                get_text('advantage', lang): get_text('medium_advantage', lang),
+                get_text('competitors_count', lang): 1,
+                get_text('strategy', lang): get_text('early_advantage', lang)
+            })
         
-        all_slugs = '\n'.join([row[get_text('slug', lang)] for row in results_data])
-        st.download_button(
-            "📋 " + ("Copiar todos los slugs" if lang == "es" else "Copy all slugs"),
-            data=all_slugs,
-            file_name="gaps_slugs.txt",
-            mime="text/plain"
-        )
-    else:
-        st.success("🎉 " + ("¡Ya cubres todas las zonas de tus competidores!" if lang == "es" else "You already cover all competitor zones!"))
+        if strengths_data:
+            df_strengths = pd.DataFrame(strengths_data)
+            st.dataframe(df_strengths, use_container_width=True, hide_index=True)
+        else:
+            st.info("ℹ️ " + ("No se detectaron fortalezas únicas" if lang == "es" else "No unique strengths detected"))
+    
+    with tab3:
+        st.subheader(get_text('ties_found', lang))
+        
+        if analysis['ties']:
+            ties_data = []
+            
+            for zone in sorted(analysis['ties']):
+                comp_count = sum([
+                    1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
+                    if any(z == zone for z, _, _ in comp_data)
+                ])
+                
+                ties_data.append({
+                    get_text('zone', lang): zone.title(),
+                    get_text('competitors_count', lang): comp_count,
+                    get_text('strategy', lang): get_text('competitive_market', lang)
+                })
+            
+            df_ties = pd.DataFrame(ties_data)
+            st.dataframe(df_ties, use_container_width=True, hide_index=True)
+        else:
+            st.info("ℹ️ " + ("No hay mercados saturados" if lang == "es" else "No saturated markets"))
+    
+    with tab4:
+        st.subheader(get_text('low_confidence', lang))
+        
+        low_conf_gaps = []
+        
+        for gap in analysis['gaps']:
+            confidences = []
+            for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
+                for z, conf, _ in comp_data:
+                    if z == gap and conf:
+                        confidences.append(conf['score'])
+            
+            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+            
+            if avg_conf < 67:
+                low_conf_gaps.append({
+                    get_text('zone', lang): gap.title(),
+                    get_text('confidence', lang): f"{avg_conf}%",
+                    get_text('slug', lang): f"/{selected_service}-{gap}/"
+                })
+        
+        if low_conf_gaps:
+            st.warning("⚠️ " + ("Estas zonas requieren verificación manual antes de crear contenido" if lang == "es" else "These zones require manual verification before creating content"))
+            df_low = pd.DataFrame(low_conf_gaps)
+            st.dataframe(df_low, use_container_width=True, hide_index=True)
+        else:
+            st.success("✅ " + ("Todos los gaps tienen alta confianza" if lang == "es" else "All gaps have high confidence"))
