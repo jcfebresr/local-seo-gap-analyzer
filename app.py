@@ -616,8 +616,101 @@ def calculate_confidence(zone, cities, url, lang="es"):
     }
 
 # ============================================
-# EXTRACCIÓN Y ANÁLISIS
+# SLUG ENGINE INTELIGENTE (NUEVO - SPRINT 3.3)
 # ============================================
+
+def detect_url_pattern(url, zone, service):
+    """
+    Detecta el patrón de URL usado.
+    
+    Returns:
+        str: 'zone_only', 'service_zone', 'zone_service', 'other'
+    """
+    path = urlparse(url).path.strip('/').lower()
+    
+    # Normalizar para matching
+    zone_norm = zone.lower()
+    service_norm = service.lower()
+    
+    # Patrón 1: /{zona}/
+    if path == zone_norm:
+        return 'zone_only'
+    
+    # Patrón 2: /{servicio}-{zona}/
+    if path == f"{service_norm}-{zone_norm}":
+        return 'service_zone'
+    
+    # Patrón 3: /{zona}/{servicio}/
+    if path == f"{zone_norm}/{service_norm}":
+        return 'zone_service'
+    
+    # Patrón 4: /{zona}-{servicio}/
+    if path == f"{zone_norm}-{service_norm}":
+        return 'zone_service_dash'
+    
+    return 'other'
+
+def suggest_best_slug(gap_zone, service_key, comp_zones_data_list, lang="es"):
+    """
+    Analiza URLs de competidores para este gap y sugiere el mejor slug.
+    
+    Args:
+        gap_zone: zona del gap
+        service_key: servicio actual
+        comp_zones_data_list: lista de [(zone, confidence, url), ...]
+        lang: idioma
+    
+    Returns:
+        dict: {
+            'slug': str,
+            'pattern': str,
+            'confidence': str (ej: "2/3 competidores")
+        }
+    """
+    # Recolectar URLs de competidores que tienen esta zona
+    competitor_urls = []
+    
+    for comp_data in comp_zones_data_list:
+        for zone, conf, url in comp_data:
+            if zone == gap_zone:
+                competitor_urls.append(url)
+    
+    if not competitor_urls:
+        # Sin URLs de referencia, usar patrón default
+        return {
+            'slug': f"/{service_key}-{gap_zone}/",
+            'pattern': 'service_zone',
+            'confidence': None
+        }
+    
+    # Detectar patrones
+    patterns = {}
+    for url in competitor_urls:
+        pattern = detect_url_pattern(url, gap_zone, service_key)
+        patterns[pattern] = patterns.get(pattern, 0) + 1
+    
+    # Encontrar patrón más común
+    most_common_pattern = max(patterns, key=patterns.get)
+    count = patterns[most_common_pattern]
+    total = len(competitor_urls)
+    
+    # Generar slug según patrón
+    if most_common_pattern == 'zone_only':
+        slug = f"/{gap_zone}/"
+    elif most_common_pattern == 'service_zone':
+        slug = f"/{service_key}-{gap_zone}/"
+    elif most_common_pattern == 'zone_service':
+        slug = f"/{gap_zone}/{service_key}/"
+    elif most_common_pattern == 'zone_service_dash':
+        slug = f"/{gap_zone}-{service_key}/"
+    else:
+        slug = f"/{service_key}-{gap_zone}/"
+    
+    return {
+        'slug': slug,
+        'pattern': most_common_pattern,
+        'confidence': f"{count}/{total}"
+    }
 
 def extract_urls_from_sitemap(sitemap_url, max_urls=5000):
     try:
@@ -1008,109 +1101,38 @@ if analyze_button:
     timer_placeholder.empty()
     
     # ════════════════════════════════════════════════════════════
-    # COMPETITOR QUALITY CARDS - AHORA DESPUÉS DE all_zones_data
+    # COMPETITOR QUALITY CARDS - DESACTIVADO (BACKLOG)
+    # Descomentarizar cuando se necesite ver métricas de calidad
     # ════════════════════════════════════════════════════════════
     
-    st.divider()
-    st.subheader("📊 " + ("Calidad de Datos Extraídos" if lang == "es" else "Data Quality Summary"))
-    
-    # Preparar datos de calidad
-    quality_data = {}
-    
-    for key in ['user', 'comp1', 'comp2', 'comp3']:
-        domain = normalized_domains[key]
-        sitemap_result = sitemap_results[key]
-        total_urls = all_counts[key]['total'] if all_counts[key]['total'] > 0 else all_counts[key]['extracted']
-        extracted_urls = all_counts[key]['extracted']
-        
-        # Zonas únicas detectadas (all_zones_data YA EXISTE AQUÍ)
-        unique_zones = len(set([z for z, _, _ in all_zones_data[key]]))
-        
-        # URLs filtradas por servicio diferente
-        filtered_by_service = filtered_counts.get(key, 0)
-        
-        quality_data[key] = {
-            'domain': domain,
-            'sitemap_method': sitemap_result['message'],
-            'total_urls': total_urls,
-            'extracted_urls': extracted_urls,
-            'valid_urls': len([z for z, _, _ in all_zones_data[key]]),
-            'filtered_by_service': filtered_by_service,
-            'unique_zones': unique_zones,
-            'success_rate': int((len([z for z, _, _ in all_zones_data[key]]) / extracted_urls * 100)) if extracted_urls > 0 else 0
-        }
-    
-    # Mostrar cards en 2 filas x 2 columnas
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Card Usuario
-        data = quality_data['user']
-        with st.container():
-            if lang == "es":
-                st.markdown(f"**🏠 Tu dominio: {data['domain']}**")
-            else:
-                st.markdown(f"**🏠 Your domain: {data['domain']}**")
-            
-            st.caption(data['sitemap_method'])
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("📊 URLs totales", data['total_urls'])
-                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
-            with col_b:
-                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
-                st.metric("🗺️ Zonas únicas", data['unique_zones'])
-        
-        st.divider()
-        
-        # Card Competidor 2
-        data = quality_data['comp2']
-        with st.container():
-            st.markdown(f"**🔍 {get_text('competitor', lang)} 2: {data['domain']}**")
-            st.caption(data['sitemap_method'])
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("📊 URLs totales", data['total_urls'])
-                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
-            with col_b:
-                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
-                st.metric("🗺️ Zonas únicas", data['unique_zones'])
-    
-    with col2:
-        # Card Competidor 1
-        data = quality_data['comp1']
-        with st.container():
-            st.markdown(f"**🔍 {get_text('competitor', lang)} 1: {data['domain']}**")
-            st.caption(data['sitemap_method'])
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("📊 URLs totales", data['total_urls'])
-                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
-            with col_b:
-                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
-                st.metric("🗺️ Zonas únicas", data['unique_zones'])
-        
-        st.divider()
-        
-        # Card Competidor 3
-        data = quality_data['comp3']
-        with st.container():
-            st.markdown(f"**🔍 {get_text('competitor', lang)} 3: {data['domain']}**")
-            st.caption(data['sitemap_method'])
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("📊 URLs totales", data['total_urls'])
-                st.metric("❌ Filtradas (servicio)", data['filtered_by_service'])
-            with col_b:
-                st.metric("✅ URLs válidas", f"{data['valid_urls']} ({data['success_rate']}%)")
-                st.metric("🗺️ Zonas únicas", data['unique_zones'])
+    # st.divider()
+    # st.subheader("📊 " + ("Calidad de Datos Extraídos" if lang == "es" else "Data Quality Summary"))
+    # 
+    # quality_data = {}
+    # 
+    # for key in ['user', 'comp1', 'comp2', 'comp3']:
+    #     domain = normalized_domains[key]
+    #     sitemap_result = sitemap_results[key]
+    #     total_urls = all_counts[key]['total'] if all_counts[key]['total'] > 0 else all_counts[key]['extracted']
+    #     extracted_urls = all_counts[key]['extracted']
+    #     unique_zones = len(set([z for z, _, _ in all_zones_data[key]]))
+    #     filtered_by_service = filtered_counts.get(key, 0)
+    #     
+    #     quality_data[key] = {
+    #         'domain': domain,
+    #         'sitemap_method': sitemap_result['message'],
+    #         'total_urls': total_urls,
+    #         'extracted_urls': extracted_urls,
+    #         'valid_urls': len([z for z, _, _ in all_zones_data[key]]),
+    #         'filtered_by_service': filtered_by_service,
+    #         'unique_zones': unique_zones,
+    #         'success_rate': int((len([z for z, _, _ in all_zones_data[key]]) / extracted_urls * 100)) if extracted_urls > 0 else 0
+    #     }
+    # 
+    # [RESTO DEL CÓDIGO DE QUALITY CARDS COMENTADO...]
     
     # ════════════════════════════════════════════════════════════
-    # FIN COMPETITOR QUALITY CARDS
+    # FIN COMPETITOR QUALITY CARDS (BACKLOG)
     # ════════════════════════════════════════════════════════════
     
     # Análisis comprehensivo
@@ -1260,15 +1282,32 @@ if analyze_button:
                     priority = get_text('low_priority', lang)
                     color = "🟢"
                 
+                # SLUG ENGINE INTELIGENTE (NUEVO)
+                slug_suggestion = suggest_best_slug(
+                    gap, 
+                    selected_service, 
+                    [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
+                    lang
+                )
+                
                 # Solo mostrar gaps con confianza >= 67%
                 if avg_conf >= 67:
-                    gaps_data.append({
+                    gap_row = {
                         get_text('priority', lang): f"{color} {priority}",
                         get_text('zone', lang): gap.title(),
-                        get_text('slug', lang): f"/{selected_service}-{gap}/",
+                        get_text('slug', lang): slug_suggestion['slug'],
                         get_text('competitors_count', lang): comp_count,
                         get_text('confidence', lang): f"{avg_conf}%"
-                    })
+                    }
+                    
+                    # Agregar patrón si hay confianza
+                    if slug_suggestion['confidence']:
+                        if lang == "es":
+                            gap_row['Patrón'] = f"{slug_suggestion['confidence']} usan {slug_suggestion['pattern']}"
+                        else:
+                            gap_row['Pattern'] = f"{slug_suggestion['confidence']} use {slug_suggestion['pattern']}"
+                    
+                    gaps_data.append(gap_row)
             
             if gaps_data:
                 df_gaps = pd.DataFrame(gaps_data)
