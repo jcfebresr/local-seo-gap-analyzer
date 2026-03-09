@@ -1004,6 +1004,103 @@ if analyze_button:
     
     st.divider()
     
+    # ════════════════════════════════════════════════════════════
+    # SUMMARY STATS DASHBOARD (NUEVO - SPRINT 3.1)
+    # ════════════════════════════════════════════════════════════
+    
+    st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
+    
+    # Calcular totales por prioridad
+    high_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 3])
+    
+    medium_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 2])
+    
+    low_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 1])
+    
+    # Calcular gaps de baja confianza
+    low_conf_count = 0
+    for gap in analysis['gaps']:
+        confidences = []
+        for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
+            for z, conf, _ in comp_data:
+                if z == gap and conf:
+                    confidences.append(conf['score'])
+        avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+        if avg_conf < 67:
+            low_conf_count += 1
+    
+    # FILA 1: Métricas principales
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="🎯 " + ("Total Gaps" if lang == "en" else "Total Gaps"),
+            value=len(analysis['gaps']),
+            delta=None
+        )
+    
+    with col2:
+        st.metric(
+            label="💪 " + get_text('strengths_found', lang),
+            value=len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2']),
+            delta=None
+        )
+    
+    with col3:
+        st.metric(
+            label="🏠 " + get_text('home_zone_detected', lang),
+            value=st.session_state.home_zone.title(),
+            delta=None
+        )
+    
+    with col4:
+        st.metric(
+            label="⚖️ " + get_text('ties_found', lang),
+            value=len(analysis['ties']),
+            delta=None
+        )
+    
+    # FILA 2: Desglose por prioridad
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="🔴 " + get_text('high_priority', lang),
+            value=f"{high_priority} gaps",
+            delta=None,
+            help=get_text('validated_opportunity', lang)
+        )
+    
+    with col2:
+        st.metric(
+            label="🟡 " + get_text('medium_priority', lang),
+            value=f"{medium_priority} gaps",
+            delta=None,
+            help=get_text('emerging_niche', lang)
+        )
+    
+    with col3:
+        st.metric(
+            label="🟢 " + get_text('low_priority', lang),
+            value=f"{low_priority} gaps",
+            delta=None,
+            help=get_text('long_tail', lang)
+        )
+    
+    with col4:
+        st.metric(
+            label="⚠️ " + ("Revisar" if lang == "es" else "Review"),
+            value=f"{low_conf_count} gaps",
+            delta=None,
+            help="Confidence <67%"
+        )
+    
+    st.divider()
+    
+    # ════════════════════════════════════════════════════════════
+    # FIN SUMMARY STATS DASHBOARD
+    # ════════════════════════════════════════════════════════════
+    
     # TABS
     tab1, tab2, tab3, tab4 = st.tabs([
         f"🎯 {get_text('gaps_found', lang)} ({len(analysis['gaps'])})",
