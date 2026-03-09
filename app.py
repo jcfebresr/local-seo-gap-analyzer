@@ -805,6 +805,13 @@ with col1:
         placeholder=get_text('domain_placeholder', lang),
         help="Solo el dominio, sin https:// ni rutas"
     )
+    
+    # INPUT SITEMAP MANUAL
+    user_sitemap_input = st.text_input(
+        f"📄 Sitemap URL (opcional)",
+        placeholder="https://tudominio.com/sitemap.xml",
+        help="Si tu sitemap no se detecta automáticamente, pégalo aquí"
+    )
 
 with col2:
     if user_domain_input:
@@ -866,8 +873,30 @@ if analyze_button:
     
     st.subheader("🔍 " + get_text('extracting_urls', lang))
     
-    with st.spinner(''):
-        sitemap_results = find_all_sitemaps(normalized_domains)
+    # USAR SITEMAP MANUAL SI SE PROPORCIONÓ
+    if user_sitemap_input and user_sitemap_input.strip():
+        sitemap_results = {
+            'user': {
+                'sitemap_url': user_sitemap_input.strip(),
+                'method': 'manual',
+                'success': True,
+                'message': '✅ Manual'
+            }
+        }
+        
+        # Auto-discovery solo para competidores
+        with st.spinner(''):
+            comp_sitemaps = find_all_sitemaps({
+                'comp1': normalized_domains['comp1'],
+                'comp2': normalized_domains['comp2'],
+                'comp3': normalized_domains['comp3']
+            })
+        
+        sitemap_results.update(comp_sitemaps)
+    else:
+        # Auto-discovery para todos
+        with st.spinner(''):
+            sitemap_results = find_all_sitemaps(normalized_domains)
     
     for key in ['user', 'comp1', 'comp2', 'comp3']:
         result = sitemap_results[key]
