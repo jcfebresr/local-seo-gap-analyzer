@@ -320,42 +320,61 @@ def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
 # AUTO-DISCOVERY SITEMAPS
 # ============================================
 
-def find_sitemap(domain, timeout=10):
-    """Busca automáticamente el sitemap con orden de prioridad corregido"""
+def find_sitemap(domain, timeout=15):
+    """Busca automáticamente el sitemap con fallback GET si HEAD falla"""
     base_url = f"https://{domain}"
     
-    # ORDEN CORREGIDO: sitemap_index.xml PRIMERO (más común en WordPress/Yoast)
     sitemap_paths = [
-        '/sitemap_index.xml',      # Primero - Yoast SEO, Rank Math
-        '/sitemap.xml',             # Segundo - Genérico
-        '/sitemap-index.xml',       # Variante con guión
-        '/wp-sitemap.xml',          # WordPress nativo
-        '/post-sitemap.xml',        # Yoast posts
-        '/page-sitemap.xml',        # Yoast pages
-        '/sitemap.php',             # Dinámico
+        '/sitemap_index.xml',
+        '/sitemap.xml',
+        '/sitemap-index.xml',
+        '/wp-sitemap.xml',
+        '/post-sitemap.xml',
+        '/page-sitemap.xml',
+        '/sitemap.php',
     ]
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.2; +https://github.com/user/local-seo-gap)'
     }
     
-    # Método 1: URLs directas
+    # Método 1: URLs directas con HEAD request
     for path in sitemap_paths:
         try:
             url = urljoin(base_url, path)
-            response = requests.head(url, headers=headers, timeout=timeout, allow_redirects=True)
             
-            if response.status_code == 200:
-                content_type = response.headers.get('Content-Type', '').lower()
-                if 'xml' in content_type or path.endswith('.xml'):
-                    return {
-                        'sitemap_url': url,
-                        'method': 'direct',
-                        'success': True,
-                        'message': f"✅ {path}"
-                    }
+            # Intenta HEAD primero (más rápido)
+            try:
+                response = requests.head(url, headers=headers, timeout=timeout, allow_redirects=True)
+                
+                if response.status_code == 200:
+                    content_type = response.headers.get('Content-Type', '').lower()
+                    if 'xml' in content_type or path.endswith('.xml'):
+                        return {
+                            'sitemap_url': url,
+                            'method': 'direct',
+                            'success': True,
+                            'message': f"✅ {path}"
+                        }
+            except:
+                # Si HEAD falla, intenta GET (algunos servidores bloquean HEAD)
+                try:
+                    response = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True, stream=True)
+                    
+                    if response.status_code == 200:
+                        # Leer primeros 200 bytes para verificar que es XML
+                        content_start = next(response.iter_content(200), b'').decode('utf-8', errors='ignore')
+                        
+                        if '<?xml' in content_start or '<urlset' in content_start or '<sitemapindex' in content_start:
+                            return {
+                                'sitemap_url': url,
+                                'method': 'direct',
+                                'success': True,
+                                'message': f"✅ {path}"
+                            }
+                except:
+                    pass
         except Exception as e:
-            # Continuar con siguiente path si falla
             continue
     
     # Método 2: robots.txt
@@ -367,8 +386,10 @@ def find_sitemap(domain, timeout=10):
             for line in response.text.split('\n'):
                 if line.lower().startswith('sitemap:'):
                     sitemap_url = line.split(':', 1)[1].strip()
+                    
+                    # Validar que la URL es accesible
                     try:
-                        check = requests.head(sitemap_url, headers=headers, timeout=5)
+                        check = requests.head(sitemap_url, headers=headers, timeout=timeout, allow_redirects=True)
                         if check.status_code == 200:
                             return {
                                 'sitemap_url': sitemap_url,
@@ -377,7 +398,18 @@ def find_sitemap(domain, timeout=10):
                                 'message': "✅ robots.txt"
                             }
                     except:
-                        continue
+                        # Intentar con GET si HEAD falla
+                        try:
+                            check = requests.get(sitemap_url, headers=headers, timeout=timeout, allow_redirects=True, stream=True)
+                            if check.status_code == 200:
+                                return {
+                                    'sitemap_url': sitemap_url,
+                                    'method': 'robots',
+                                    'success': True,
+                                    'message': "✅ robots.txt"
+                                }
+                        except:
+                            continue
     except:
         pass
     
