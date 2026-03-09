@@ -593,10 +593,10 @@ st.title(get_text('title', st.session_state.lang))
 with st.sidebar:
     st.subheader(get_text('language', st.session_state.lang))
     lang_option = st.radio(
-        "",
+        "Select language",  # Label no vacío
         options=['🇪🇸 Español', '🇬🇧 English'],
         index=0 if st.session_state.lang == 'es' else 1,
-        label_visibility='collapsed'
+        label_visibility='collapsed'  # Se oculta visualmente pero existe para accesibilidad
     )
     
     new_lang = 'es' if '🇪🇸' in lang_option else 'en'
