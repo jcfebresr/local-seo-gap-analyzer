@@ -1,9 +1,10 @@
 """
-Local SEO Geo-Gap Analyzer v2.3.1
-Sprint 3.1 - Filtros CORREGIDOS + URLs Evidencia
-- Filtros sin reset de estado (usando session_state)
-- URLs de competidores en lista visible
-- Solo exportación CSV
+Local SEO Geo-Gap Analyzer v2.4
+Sprint 3.2 - Integración APIs SEO (OPCIONAL)
+- Soporte SE Ranking, Semrush, Ahrefs
+- Volumen de búsquedas + KD
+- Keywords ranking + tráfico por URL
+- Todo opcional (funciona sin API)
 """
 
 import streamlit as st
@@ -17,6 +18,7 @@ from urllib.parse import urlparse, urljoin
 from rapidfuzz import fuzz
 import time
 import io
+import json
 
 # ============================================
 # CONFIGURACIÓN MULTIIDIOMA
@@ -54,6 +56,10 @@ TRANSLATIONS = {
         "competitor_urls": "URLs Competidores",
         "competitors_count": "Nº Comps",
         "confidence": "Confianza",
+        "search_volume": "Volumen",
+        "keyword_difficulty": "KD",
+        "traffic": "Tráfico",
+        "keywords_ranking": "Keywords",
         "advantage": "Ventaja",
         "strategy": "Estrategia",
         "priority": "Prioridad",
@@ -81,6 +87,13 @@ TRANSLATIONS = {
         "results": "resultados",
         "no_gaps_filter": "No hay gaps que coincidan con los filtros",
         "export_csv": "📥 Exportar CSV",
+        "api_optional": "📊 API Keywords (Opcional)",
+        "enable_api": "Habilitar API",
+        "api_provider": "Proveedor",
+        "api_key": "API Key",
+        "api_key_placeholder": "Pega tu API key aquí",
+        "country_code": "País",
+        "fetching_metrics": "Obteniendo métricas de API...",
     },
     "en": {
         "title": "🎯 Local SEO Geo-Gap Analyzer",
@@ -113,6 +126,10 @@ TRANSLATIONS = {
         "competitor_urls": "Competitor URLs",
         "competitors_count": "# Comps",
         "confidence": "Confidence",
+        "search_volume": "Volume",
+        "keyword_difficulty": "KD",
+        "traffic": "Traffic",
+        "keywords_ranking": "Keywords",
         "advantage": "Advantage",
         "strategy": "Strategy",
         "priority": "Priority",
@@ -140,6 +157,13 @@ TRANSLATIONS = {
         "results": "results",
         "no_gaps_filter": "No gaps match the filters",
         "export_csv": "📥 Export CSV",
+        "api_optional": "📊 Keywords API (Optional)",
+        "enable_api": "Enable API",
+        "api_provider": "Provider",
+        "api_key": "API Key",
+        "api_key_placeholder": "Paste your API key here",
+        "country_code": "Country",
+        "fetching_metrics": "Fetching API metrics...",
     }
 }
 
@@ -347,6 +371,159 @@ def get_service_variations(service_key, lang="es"):
     
     return list(variations)
 
+# ============================================
+# API INTEGRATIONS
+# ============================================
+
+def build_keyword_from_gap(service, zone, lang="es"):
+    """Construye keyword target desde gap"""
+    if lang == "es":
+        return f"{service} {zone}"
+    else:
+        return f"{zone} {service}"
+
+def fetch_seranking_keyword_data(keyword, api_key, country_code="es"):
+    """SE Ranking: Keyword Overview"""
+    try:
+        url = "https://api4.seranking.com/research/keywords"
+        headers = {
+            "Authorization": f"Token {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "keywords": [keyword],
+            "location_id": country_code,
+            "language_code": "es" if country_code == "es" else "en"
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                kw_data = data[0]
+                return {
+                    'volume': kw_data.get('search_volume', 0),
+                    'kd': kw_data.get('difficulty', 0)
+                }
+        
+        return None
+    except Exception as e:
+        st.warning(f"⚠️ Error SE Ranking API: {str(e)}")
+        return None
+
+def fetch_seranking_url_keywords(url, api_key, country_code="es"):
+    """SE Ranking: Rankings + Tráfico por URL"""
+    try:
+        api_url = "https://api4.seranking.com/research/competitors"
+        headers = {
+            "Authorization": f"Token {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "url": url,
+            "location_id": country_code,
+            "limit": 50  # Top 50 keywords
+        }
+        
+        response = requests.post(api_url, headers=headers, json=payload, timeout=15)
+        
+        if response.status_code == 200:
+            data = response.json()
+            keywords_list = data.get('keywords', [])
+            
+            total_traffic = sum([kw.get('traffic', 0) for kw in keywords_list])
+            keywords_str = ", ".join([kw.get('keyword', '') for kw in keywords_list[:10]])  # Top 10
+            
+            return {
+                'traffic': total_traffic,
+                'keywords': keywords_str,
+                'keywords_count': len(keywords_list)
+            }
+        
+        return None
+    except Exception as e:
+        st.warning(f"⚠️ Error SE Ranking URL API: {str(e)}")
+        return None
+
+def fetch_semrush_keyword_data(keyword, api_key, database="es"):
+    """Semrush: Keyword Overview"""
+    try:
+        url = f"https://api.semrush.com/"
+        params = {
+            'type': 'phrase_this',
+            'key': api_key,
+            'phrase': keyword,
+            'database': database,
+            'export_columns': 'Ph,Nq,Kd'
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            lines = response.text.strip().split('\n')
+            if len(lines) > 1:
+                data = lines[1].split(';')
+                return {
+                    'volume': int(data[1]) if len(data) > 1 else 0,
+                    'kd': int(data[2]) if len(data) > 2 else 0
+                }
+        
+        return None
+    except Exception as e:
+        st.warning(f"⚠️ Error Semrush API: {str(e)}")
+        return None
+
+def fetch_ahrefs_keyword_data(keyword, api_key, country="es"):
+    """Ahrefs: Keyword Overview"""
+    try:
+        url = "https://api.ahrefs.com/v3/keywords-explorer/overview"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "country": country,
+            "keywords": [keyword]
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'keywords' in data and len(data['keywords']) > 0:
+                kw_data = data['keywords'][0]
+                return {
+                    'volume': kw_data.get('volume', 0),
+                    'kd': kw_data.get('difficulty', 0)
+                }
+        
+        return None
+    except Exception as e:
+        st.warning(f"⚠️ Error Ahrefs API: {str(e)}")
+        return None
+
+def fetch_api_data(keyword, api_provider, api_key, country_code):
+    """Wrapper unificado para todas las APIs"""
+    if api_provider == "SE Ranking":
+        return fetch_seranking_keyword_data(keyword, api_key, country_code)
+    elif api_provider == "Semrush":
+        return fetch_semrush_keyword_data(keyword, api_key, country_code)
+    elif api_provider == "Ahrefs":
+        return fetch_ahrefs_keyword_data(keyword, api_key, country_code)
+    return None
+
+def fetch_url_keywords_api(url, api_provider, api_key, country_code):
+    """Obtener keywords + tráfico de una URL"""
+    if api_provider == "SE Ranking":
+        return fetch_seranking_url_keywords(url, api_key, country_code)
+    # TODO: Implementar para Semrush y Ahrefs si tienen endpoints similares
+    return None
+
+# ============================================
+# RESTO DEL CÓDIGO (sin cambios)
+# ============================================
+
 def normalize_domain(domain_input):
     if not domain_input:
         return None
@@ -424,7 +601,7 @@ def find_sitemap(domain, timeout=15):
     ]
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.3; +https://github.com/user/local-seo-gap)'
+        'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.4; +https://github.com/user/local-seo-gap)'
     }
     
     for path in sitemap_paths:
@@ -540,7 +717,7 @@ def detect_home_zone_from_homepage(domain, lang="es", timeout=10):
     try:
         url = f"https://{domain}"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.3)'
+            'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.4)'
         }
         
         response = requests.get(url, headers=headers, timeout=timeout)
@@ -802,7 +979,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Inicializar session_state para filtros
+# Inicializar session_state
 if 'lang' not in st.session_state:
     st.session_state.lang = 'es'
 
@@ -812,14 +989,8 @@ if 'analysis_done' not in st.session_state:
 if 'gaps_data' not in st.session_state:
     st.session_state.gaps_data = []
 
-if 'filter_priority' not in st.session_state:
-    st.session_state.filter_priority = get_text('all', st.session_state.lang)
-
-if 'filter_comps' not in st.session_state:
-    st.session_state.filter_comps = get_text('all', st.session_state.lang)
-
-if 'search_query' not in st.session_state:
-    st.session_state.search_query = ""
+if 'api_enabled' not in st.session_state:
+    st.session_state.api_enabled = False
 
 st.title(get_text('title', st.session_state.lang))
 
@@ -837,6 +1008,42 @@ with st.sidebar:
         st.session_state.lang = new_lang
         st.session_state.analysis_done = False
         st.rerun()
+    
+    st.divider()
+    
+    # API CONFIGURATION (OPCIONAL)
+    st.subheader(get_text('api_optional', st.session_state.lang))
+    
+    api_enabled = st.checkbox(
+        get_text('enable_api', st.session_state.lang),
+        value=st.session_state.api_enabled
+    )
+    
+    if api_enabled:
+        api_provider = st.selectbox(
+            get_text('api_provider', st.session_state.lang),
+            options=["SE Ranking", "Semrush", "Ahrefs"],
+            index=0
+        )
+        
+        api_key = st.text_input(
+            get_text('api_key', st.session_state.lang),
+            type="password",
+            placeholder=get_text('api_key_placeholder', st.session_state.lang)
+        )
+        
+        country_code = st.selectbox(
+            get_text('country_code', st.session_state.lang),
+            options=["es", "us", "uk", "fr", "de", "it"],
+            index=0
+        )
+        
+        st.session_state.api_enabled = True
+        st.session_state.api_provider = api_provider
+        st.session_state.api_key = api_key
+        st.session_state.country_code = country_code
+    else:
+        st.session_state.api_enabled = False
 
 lang = st.session_state.lang
 
@@ -1056,51 +1263,136 @@ if analyze_button:
     # Construir gaps_data
     gaps_data = []
     
-    for gap in sorted(analysis['gaps']):
-        comp_count = sum([
-            1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
-            if any(z == gap for z, _, _ in comp_data)
-        ])
+    # API ENRICHMENT (OPCIONAL)
+    if st.session_state.api_enabled and st.session_state.api_key:
+        st.info(f"📊 {get_text('fetching_metrics', lang)}")
+        api_progress = st.progress(0)
         
-        confidences = []
-        for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
-            for z, conf, _ in comp_data:
-                if z == gap and conf:
-                    confidences.append(conf['score'])
-        
-        avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
-        
-        if comp_count == 3:
-            priority = get_text('high_priority', lang)
-            color = "🔴"
-        elif comp_count == 2:
-            priority = get_text('medium_priority', lang)
-            color = "🟡"
-        else:
-            priority = get_text('low_priority', lang)
-            color = "🟢"
-        
-        slug_data = suggest_best_slug(
-            gap, 
-            selected_service, 
-            [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
-            lang
-        )
-        
-        if avg_conf >= 67:
-            gap_row = {
-                get_text('priority', lang): f"{color} {priority}",
-                get_text('zone', lang): gap.title(),
-                get_text('slug', lang): slug_data['slug'],
-                get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
-                get_text('competitors_count', lang): comp_count,
-                get_text('confidence', lang): f"{avg_conf}%",
-                '_priority_raw': priority,
-                '_comp_count_raw': comp_count,
-                '_zone_raw': gap.lower()
-            }
+        for idx, gap in enumerate(sorted(analysis['gaps'])):
+            comp_count = sum([
+                1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
+                if any(z == gap for z, _, _ in comp_data)
+            ])
             
-            gaps_data.append(gap_row)
+            confidences = []
+            for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
+                for z, conf, _ in comp_data:
+                    if z == gap and conf:
+                        confidences.append(conf['score'])
+            
+            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+            
+            if avg_conf >= 67:
+                if comp_count == 3:
+                    priority = get_text('high_priority', lang)
+                    color = "🔴"
+                elif comp_count == 2:
+                    priority = get_text('medium_priority', lang)
+                    color = "🟡"
+                else:
+                    priority = get_text('low_priority', lang)
+                    color = "🟢"
+                
+                slug_data = suggest_best_slug(
+                    gap, 
+                    selected_service, 
+                    [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
+                    lang
+                )
+                
+                # FETCH API DATA
+                keyword = build_keyword_from_gap(selected_service, gap, lang)
+                api_data = fetch_api_data(
+                    keyword,
+                    st.session_state.api_provider,
+                    st.session_state.api_key,
+                    st.session_state.country_code
+                )
+                
+                # FETCH URL KEYWORDS + TRAFFIC
+                url_keywords_data = None
+                if slug_data['urls']:
+                    first_url = slug_data['urls'][0]
+                    url_keywords_data = fetch_url_keywords_api(
+                        first_url,
+                        st.session_state.api_provider,
+                        st.session_state.api_key,
+                        st.session_state.country_code
+                    )
+                
+                gap_row = {
+                    get_text('priority', lang): f"{color} {priority}",
+                    get_text('zone', lang): gap.title(),
+                    get_text('slug', lang): slug_data['slug'],
+                    get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
+                    get_text('competitors_count', lang): comp_count,
+                    get_text('confidence', lang): f"{avg_conf}%",
+                    '_priority_raw': priority,
+                    '_comp_count_raw': comp_count,
+                    '_zone_raw': gap.lower()
+                }
+                
+                # AGREGAR COLUMNAS API SI HAY DATOS
+                if api_data:
+                    gap_row[get_text('search_volume', lang)] = api_data.get('volume', 0)
+                    gap_row[get_text('keyword_difficulty', lang)] = api_data.get('kd', 0)
+                
+                if url_keywords_data:
+                    gap_row[get_text('traffic', lang)] = url_keywords_data.get('traffic', 0)
+                    gap_row[get_text('keywords_ranking', lang)] = url_keywords_data.get('keywords', '')
+                
+                gaps_data.append(gap_row)
+            
+            api_progress.progress((idx + 1) / len(analysis['gaps']))
+        
+        api_progress.empty()
+    else:
+        # SIN API
+        for gap in sorted(analysis['gaps']):
+            comp_count = sum([
+                1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
+                if any(z == gap for z, _, _ in comp_data)
+            ])
+            
+            confidences = []
+            for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
+                for z, conf, _ in comp_data:
+                    if z == gap and conf:
+                        confidences.append(conf['score'])
+            
+            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+            
+            if comp_count == 3:
+                priority = get_text('high_priority', lang)
+                color = "🔴"
+            elif comp_count == 2:
+                priority = get_text('medium_priority', lang)
+                color = "🟡"
+            else:
+                priority = get_text('low_priority', lang)
+                color = "🟢"
+            
+            slug_data = suggest_best_slug(
+                gap, 
+                selected_service, 
+                [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
+                lang
+            )
+            
+            if avg_conf >= 67:
+                gap_row = {
+                    get_text('priority', lang): f"{color} {priority}",
+                    get_text('zone', lang): gap.title(),
+                    get_text('slug', lang): slug_data['slug'],
+                    get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
+                    get_text('competitors_count', lang): comp_count,
+                    get_text('confidence', lang): f"{avg_conf}%",
+                    '_priority_raw': priority,
+                    '_comp_count_raw': comp_count,
+                    '_zone_raw': gap.lower()
+                }
+                
+                gaps_data.append(gap_row)
     
     # Guardar en session_state
     st.session_state.gaps_data = gaps_data
@@ -1112,7 +1404,7 @@ if analyze_button:
     st.rerun()
 
 # ============================================
-# MOSTRAR RESULTADOS SI YA SE ANALIZÓ
+# MOSTRAR RESULTADOS
 # ============================================
 
 if st.session_state.analysis_done:
@@ -1125,9 +1417,9 @@ if st.session_state.analysis_done:
     
     st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
     
-    high_priority = sum([1 for g in gaps_data if g['_comp_count_raw'] == 3])
-    medium_priority = sum([1 for g in gaps_data if g['_comp_count_raw'] == 2])
-    low_priority = sum([1 for g in gaps_data if g['_comp_count_raw'] == 1])
+    high_priority = sum([1 for g in gaps_data if g.get('_comp_count_raw') == 3])
+    medium_priority = sum([1 for g in gaps_data if g.get('_comp_count_raw') == 2])
+    low_priority = sum([1 for g in gaps_data if g.get('_comp_count_raw') == 1])
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1236,14 +1528,14 @@ if st.session_state.analysis_done:
             filtered_gaps = gaps_data.copy()
             
             if selected_priority != all_text:
-                filtered_gaps = [g for g in filtered_gaps if g['_priority_raw'] == selected_priority]
+                filtered_gaps = [g for g in filtered_gaps if g.get('_priority_raw') == selected_priority]
             
             if selected_comps != all_text:
-                filtered_gaps = [g for g in filtered_gaps if g['_comp_count_raw'] == int(selected_comps)]
+                filtered_gaps = [g for g in filtered_gaps if g.get('_comp_count_raw') == int(selected_comps)]
             
             if search_query:
                 search_lower = unidecode(search_query.lower())
-                filtered_gaps = [g for g in filtered_gaps if search_lower in g['_zone_raw']]
+                filtered_gaps = [g for g in filtered_gaps if search_lower in g.get('_zone_raw', '')]
             
             # MOSTRAR
             if filtered_gaps:
