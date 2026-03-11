@@ -1,10 +1,9 @@
 """
-Local SEO Geo-Gap Analyzer v2.3
-Sprint 3.1 - Filtros Interactivos + UI Mejorada
-- Filtros por prioridad, competidores y zona
-- Búsqueda en tiempo real
-- Ordenamiento clickeable
-- Preparado para integración API (próximo sprint)
+Local SEO Geo-Gap Analyzer v2.3.1
+Sprint 3.1 - Filtros CORREGIDOS + URLs Evidencia
+- Filtros sin reset de estado (usando session_state)
+- URLs de competidores en lista visible
+- Solo exportación CSV
 """
 
 import streamlit as st
@@ -17,6 +16,7 @@ from unidecode import unidecode
 from urllib.parse import urlparse, urljoin
 from rapidfuzz import fuzz
 import time
+import io
 
 # ============================================
 # CONFIGURACIÓN MULTIIDIOMA
@@ -51,6 +51,7 @@ TRANSLATIONS = {
         "low_confidence": "Baja Confianza - Revisar",
         "zone": "Zona",
         "slug": "Slug Sugerido",
+        "competitor_urls": "URLs Competidores",
         "competitors_count": "Nº Comps",
         "confidence": "Confianza",
         "advantage": "Ventaja",
@@ -80,9 +81,6 @@ TRANSLATIONS = {
         "results": "resultados",
         "no_gaps_filter": "No hay gaps que coincidan con los filtros",
         "export_csv": "📥 Exportar CSV",
-        "export_json": "📥 Exportar JSON",
-        "export_markdown": "📥 Exportar Markdown",
-        "copy_slugs": "📋 Copiar Slugs",
     },
     "en": {
         "title": "🎯 Local SEO Geo-Gap Analyzer",
@@ -112,6 +110,7 @@ TRANSLATIONS = {
         "low_confidence": "Low Confidence - Review",
         "zone": "Zone",
         "slug": "Suggested Slug",
+        "competitor_urls": "Competitor URLs",
         "competitors_count": "# Comps",
         "confidence": "Confidence",
         "advantage": "Advantage",
@@ -141,9 +140,6 @@ TRANSLATIONS = {
         "results": "results",
         "no_gaps_filter": "No gaps match the filters",
         "export_csv": "📥 Export CSV",
-        "export_json": "📥 Export JSON",
-        "export_markdown": "📥 Export Markdown",
-        "copy_slugs": "📋 Copy Slugs",
     }
 }
 
@@ -663,27 +659,8 @@ def calculate_confidence(zone, cities, url, lang="es"):
         'validations': validations
     }
 
-def detect_url_pattern(url, zone, service):
-    path = urlparse(url).path.strip('/').lower()
-    
-    zone_norm = zone.lower()
-    service_norm = service.lower()
-    
-    if path == zone_norm:
-        return 'zone_only'
-    
-    if path == f"{service_norm}-{zone_norm}":
-        return 'service_zone'
-    
-    if path == f"{zone_norm}/{service_norm}":
-        return 'zone_service'
-    
-    if path == f"{zone_norm}-{service_norm}":
-        return 'zone_service_dash'
-    
-    return 'other'
-
 def suggest_best_slug(gap_zone, service_key, comp_zones_data_list, lang="es"):
+    """Retorna slug sugerido + URLs de competidores"""
     competitor_urls = []
     
     for comp_data in comp_zones_data_list:
@@ -694,34 +671,12 @@ def suggest_best_slug(gap_zone, service_key, comp_zones_data_list, lang="es"):
     if not competitor_urls:
         return {
             'slug': f"/{service_key}-{gap_zone}/",
-            'pattern': 'service_zone',
-            'confidence': None
+            'urls': []
         }
     
-    patterns = {}
-    for url in competitor_urls:
-        pattern = detect_url_pattern(url, gap_zone, service_key)
-        patterns[pattern] = patterns.get(pattern, 0) + 1
-    
-    most_common_pattern = max(patterns, key=patterns.get)
-    count = patterns[most_common_pattern]
-    total = len(competitor_urls)
-    
-    if most_common_pattern == 'zone_only':
-        slug = f"/{gap_zone}/"
-    elif most_common_pattern == 'service_zone':
-        slug = f"/{service_key}-{gap_zone}/"
-    elif most_common_pattern == 'zone_service':
-        slug = f"/{gap_zone}/{service_key}/"
-    elif most_common_pattern == 'zone_service_dash':
-        slug = f"/{gap_zone}-{service_key}/"
-    else:
-        slug = f"/{service_key}-{gap_zone}/"
-    
     return {
-        'slug': slug,
-        'pattern': most_common_pattern,
-        'confidence': f"{count}/{total}"
+        'slug': f"/{service_key}-{gap_zone}/",
+        'urls': competitor_urls
     }
 
 def extract_urls_from_sitemap(sitemap_url, max_urls=5000):
@@ -830,56 +785,12 @@ def analyze_comprehensive(user_zones_data, comp_zones_data_list, home_zone):
         'ties': ties
     }
 
-# ============================================
-# FUNCIONES DE EXPORTACIÓN
-# ============================================
-
-def export_to_csv(gaps_data, lang="es"):
+def export_to_csv(gaps_data):
     """Genera CSV con datos de gaps"""
-    import io
-    
     output = io.StringIO()
     df = pd.DataFrame(gaps_data)
     df.to_csv(output, index=False, encoding='utf-8-sig')
-    
     return output.getvalue()
-
-def export_to_json(gaps_data):
-    """Genera JSON estructurado"""
-    import json
-    return json.dumps(gaps_data, indent=2, ensure_ascii=False)
-
-def export_to_markdown(gaps_data, lang="es"):
-    """Genera checklist Markdown para Notion/Obsidian"""
-    lines = ["# SEO Gaps - Checklist\n"]
-    
-    for gap in gaps_data:
-        priority_icon = {
-            "ALTA": "🔴",
-            "MEDIA": "🟡",
-            "BAJA": "🟢",
-            "HIGH": "🔴",
-            "MEDIUM": "🟡",
-            "LOW": "🟢"
-        }
-        
-        priority_key = get_text('priority', lang)
-        zone_key = get_text('zone', lang)
-        slug_key = get_text('slug', lang)
-        comps_key = get_text('competitors_count', lang)
-        
-        priority_raw = gap.get(priority_key, "")
-        priority = priority_raw.split()[-1] if priority_raw else ""
-        icon = priority_icon.get(priority, "⚪")
-        
-        zone = gap.get(zone_key, "")
-        slug = gap.get(slug_key, "")
-        comps = gap.get(comps_key, 0)
-        
-        line = f"- [ ] {icon} {priority} | Crear página: `{slug}` | Zona: {zone} | {comps} competidores\n"
-        lines.append(line)
-    
-    return "".join(lines)
 
 # ============================================
 # STREAMLIT UI
@@ -891,14 +802,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# Inicializar session_state para filtros
 if 'lang' not in st.session_state:
     st.session_state.lang = 'es'
 
-if 'home_zone_confirmed' not in st.session_state:
-    st.session_state.home_zone_confirmed = False
+if 'analysis_done' not in st.session_state:
+    st.session_state.analysis_done = False
 
-if 'show_city_selector' not in st.session_state:
-    st.session_state.show_city_selector = False
+if 'gaps_data' not in st.session_state:
+    st.session_state.gaps_data = []
+
+if 'filter_priority' not in st.session_state:
+    st.session_state.filter_priority = get_text('all', st.session_state.lang)
+
+if 'filter_comps' not in st.session_state:
+    st.session_state.filter_comps = get_text('all', st.session_state.lang)
+
+if 'search_query' not in st.session_state:
+    st.session_state.search_query = ""
 
 st.title(get_text('title', st.session_state.lang))
 
@@ -914,7 +835,7 @@ with st.sidebar:
     new_lang = 'es' if '🇪🇸' in lang_option else 'en'
     if new_lang != st.session_state.lang:
         st.session_state.lang = new_lang
-        st.session_state.home_zone_confirmed = False
+        st.session_state.analysis_done = False
         st.rerun()
 
 lang = st.session_state.lang
@@ -997,6 +918,9 @@ analyze_button = st.button(
 )
 
 if analyze_button:
+    st.session_state.analysis_done = False
+    st.session_state.gaps_data = []
+    
     success, normalized_domains, error_msg = validate_domains(
         user_domain_input, comp1_input, comp2_input, comp3_input, lang
     )
@@ -1045,36 +969,31 @@ if analyze_button:
     
     st.divider()
     
-    if 'home_zone' not in st.session_state:
-        st.subheader("🏠 " + get_text('home_zone_detected', lang))
-        
-        with st.spinner(''):
-            home_zone_result = detect_home_zone(
-                normalized_domains['user'],
-                selected_service,
-                lang
-            )
-        
-        if home_zone_result['zone']:
-            st.session_state.home_zone = home_zone_result['zone']
-            st.success(f"✅ {get_text('home_zone_detected', lang)}: **{home_zone_result['zone'].title()}** (auto-detectada)")
-        else:
-            cities = get_cities(lang)
-            manual_zone = st.selectbox(
-                get_text('select_city', lang),
-                options=cities,
-                index=0
-            )
-            st.session_state.home_zone = manual_zone
-            st.info(f"ℹ️ Zona seleccionada manualmente: **{manual_zone.title()}**")
+    st.subheader("🏠 " + get_text('home_zone_detected', lang))
+    
+    with st.spinner(''):
+        home_zone_result = detect_home_zone(
+            normalized_domains['user'],
+            selected_service,
+            lang
+        )
+    
+    if home_zone_result['zone']:
+        home_zone = home_zone_result['zone']
+        st.success(f"✅ {get_text('home_zone_detected', lang)}: **{home_zone.title()}**")
     else:
-        st.success(f"✅ " + get_text('home_zone_detected', lang) + f": **{st.session_state.home_zone.title()}**")
+        cities = get_cities(lang)
+        home_zone = st.selectbox(
+            get_text('select_city', lang),
+            options=cities,
+            index=0
+        )
+        st.info(f"ℹ️ Zona seleccionada manualmente: **{home_zone.title()}**")
     
     st.subheader("📊 " + get_text('processing', lang))
     
     all_urls = {}
     all_counts = {}
-    filtered_counts = {}
     
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -1118,53 +1037,104 @@ if analyze_button:
         
         filtered = filter_urls(urls, lang)
         zones_data = []
-        filtered_by_service = 0
         
         for url in filtered:
             zone, confidence = extract_zone_from_url(url, cities, selected_service, stop_words, lang)
             if zone:
                 zones_data.append((zone, confidence, url))
-            elif not is_url_valid_for_service(url, selected_service, lang):
-                filtered_by_service += 1
         
         all_zones_data[key] = zones_data
-        filtered_counts[key] = filtered_by_service
     
     timer_placeholder.empty()
     
     analysis = analyze_comprehensive(
         all_zones_data['user'],
         [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
-        st.session_state.home_zone
+        home_zone
     )
     
-    st.divider()
+    # Construir gaps_data
+    gaps_data = []
     
-    st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
-    
-    high_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 3])
-    
-    medium_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 2])
-    
-    low_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 1])
-    
-    low_conf_count = 0
-    for gap in analysis['gaps']:
+    for gap in sorted(analysis['gaps']):
+        comp_count = sum([
+            1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
+            if any(z == gap for z, _, _ in comp_data)
+        ])
+        
         confidences = []
         for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
             for z, conf, _ in comp_data:
                 if z == gap and conf:
                     confidences.append(conf['score'])
+        
         avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
-        if avg_conf < 67:
-            low_conf_count += 1
+        
+        if comp_count == 3:
+            priority = get_text('high_priority', lang)
+            color = "🔴"
+        elif comp_count == 2:
+            priority = get_text('medium_priority', lang)
+            color = "🟡"
+        else:
+            priority = get_text('low_priority', lang)
+            color = "🟢"
+        
+        slug_data = suggest_best_slug(
+            gap, 
+            selected_service, 
+            [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
+            lang
+        )
+        
+        if avg_conf >= 67:
+            gap_row = {
+                get_text('priority', lang): f"{color} {priority}",
+                get_text('zone', lang): gap.title(),
+                get_text('slug', lang): slug_data['slug'],
+                get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
+                get_text('competitors_count', lang): comp_count,
+                get_text('confidence', lang): f"{avg_conf}%",
+                '_priority_raw': priority,
+                '_comp_count_raw': comp_count,
+                '_zone_raw': gap.lower()
+            }
+            
+            gaps_data.append(gap_row)
+    
+    # Guardar en session_state
+    st.session_state.gaps_data = gaps_data
+    st.session_state.analysis = analysis
+    st.session_state.all_zones_data = all_zones_data
+    st.session_state.analysis_done = True
+    st.session_state.home_zone = home_zone
+    
+    st.rerun()
+
+# ============================================
+# MOSTRAR RESULTADOS SI YA SE ANALIZÓ
+# ============================================
+
+if st.session_state.analysis_done:
+    analysis = st.session_state.analysis
+    gaps_data = st.session_state.gaps_data
+    all_zones_data = st.session_state.all_zones_data
+    home_zone = st.session_state.home_zone
+    
+    st.divider()
+    
+    st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
+    
+    high_priority = sum([1 for g in gaps_data if g['_comp_count_raw'] == 3])
+    medium_priority = sum([1 for g in gaps_data if g['_comp_count_raw'] == 2])
+    low_priority = sum([1 for g in gaps_data if g['_comp_count_raw'] == 1])
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric(
-            label="🎯 " + ("Total Gaps" if lang == "en" else "Total Gaps"),
-            value=len(analysis['gaps']),
+            label="🎯 Total Gaps",
+            value=len(gaps_data),
             delta=None
         )
     
@@ -1178,7 +1148,7 @@ if analyze_button:
     with col3:
         st.metric(
             label="🏠 " + get_text('home_zone_detected', lang),
-            value=st.session_state.home_zone.title(),
+            value=home_zone.title(),
             delta=None
         )
     
@@ -1189,44 +1159,33 @@ if analyze_button:
             delta=None
         )
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.metric(
             label="🔴 " + get_text('high_priority', lang),
             value=f"{high_priority} gaps",
-            delta=None,
-            help=get_text('validated_opportunity', lang)
+            delta=None
         )
     
     with col2:
         st.metric(
             label="🟡 " + get_text('medium_priority', lang),
             value=f"{medium_priority} gaps",
-            delta=None,
-            help=get_text('emerging_niche', lang)
+            delta=None
         )
     
     with col3:
         st.metric(
             label="🟢 " + get_text('low_priority', lang),
             value=f"{low_priority} gaps",
-            delta=None,
-            help=get_text('long_tail', lang)
-        )
-    
-    with col4:
-        st.metric(
-            label="⚠️ " + ("Revisar" if lang == "es" else "Review"),
-            value=f"{low_conf_count} gaps",
-            delta=None,
-            help="Confidence <67%"
+            delta=None
         )
     
     st.divider()
     
     tab1, tab2, tab3, tab4 = st.tabs([
-        f"🎯 {get_text('gaps_found', lang)} ({len(analysis['gaps'])})",
+        f"🎯 {get_text('gaps_found', lang)} ({len(gaps_data)})",
         f"💪 {get_text('strengths_found', lang)} ({len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2'])})",
         f"⚖️ {get_text('ties_found', lang)} ({len(analysis['ties'])})",
         f"⚠️ {get_text('low_confidence', lang)}"
@@ -1235,15 +1194,13 @@ if analyze_button:
     with tab1:
         st.subheader(get_text('gaps_found', lang))
         
-        if analysis['gaps']:
-            # ============================================
-            # FILTROS INTERACTIVOS (SPRINT 3.1)
-            # ============================================
-            
+        if gaps_data:
+            # FILTROS
             col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
             
+            all_text = get_text('all', lang)
+            
             with col_f1:
-                all_text = get_text('all', lang)
                 priority_options = [
                     all_text,
                     get_text('high_priority', lang),
@@ -1253,7 +1210,8 @@ if analyze_button:
                 selected_priority = st.selectbox(
                     get_text('filter_by_priority', lang),
                     options=priority_options,
-                    index=0
+                    index=0,
+                    key='filter_priority_select'
                 )
             
             with col_f2:
@@ -1261,99 +1219,34 @@ if analyze_button:
                 selected_comps = st.selectbox(
                     get_text('filter_by_competitors', lang),
                     options=comp_options,
-                    index=0
+                    index=0,
+                    key='filter_comps_select'
                 )
             
             with col_f3:
                 search_query = st.text_input(
                     get_text('search_zone', lang),
-                    placeholder="Madrid, Barcelona, Chamberí..."
+                    placeholder="Madrid, Barcelona, Chamberí...",
+                    key='search_query_input'
                 )
             
             st.divider()
             
-            # ============================================
-            # CONSTRUCCIÓN DE GAPS DATA
-            # ============================================
-            
-            gaps_data = []
-            
-            for gap in sorted(analysis['gaps']):
-                comp_count = sum([
-                    1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
-                    if any(z == gap for z, _, _ in comp_data)
-                ])
-                
-                confidences = []
-                for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
-                    for z, conf, _ in comp_data:
-                        if z == gap and conf:
-                            confidences.append(conf['score'])
-                
-                avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
-                
-                if comp_count == 3:
-                    priority = get_text('high_priority', lang)
-                    color = "🔴"
-                elif comp_count == 2:
-                    priority = get_text('medium_priority', lang)
-                    color = "🟡"
-                else:
-                    priority = get_text('low_priority', lang)
-                    color = "🟢"
-                
-                slug_suggestion = suggest_best_slug(
-                    gap, 
-                    selected_service, 
-                    [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
-                    lang
-                )
-                
-                if avg_conf >= 67:
-                    gap_row = {
-                        get_text('priority', lang): f"{color} {priority}",
-                        get_text('zone', lang): gap.title(),
-                        get_text('slug', lang): slug_suggestion['slug'],
-                        get_text('competitors_count', lang): comp_count,
-                        get_text('confidence', lang): f"{avg_conf}%",
-                        '_priority_raw': priority,
-                        '_comp_count_raw': comp_count,
-                        '_zone_raw': gap.lower()
-                    }
-                    
-                    if slug_suggestion['confidence']:
-                        if lang == "es":
-                            gap_row['Patrón'] = f"{slug_suggestion['confidence']} usan {slug_suggestion['pattern']}"
-                        else:
-                            gap_row['Pattern'] = f"{slug_suggestion['confidence']} use {slug_suggestion['pattern']}"
-                    
-                    gaps_data.append(gap_row)
-            
-            # ============================================
             # APLICAR FILTROS
-            # ============================================
-            
             filtered_gaps = gaps_data.copy()
             
-            # Filtro por prioridad
             if selected_priority != all_text:
                 filtered_gaps = [g for g in filtered_gaps if g['_priority_raw'] == selected_priority]
             
-            # Filtro por N° competidores
             if selected_comps != all_text:
                 filtered_gaps = [g for g in filtered_gaps if g['_comp_count_raw'] == int(selected_comps)]
             
-            # Filtro por búsqueda
             if search_query:
                 search_lower = unidecode(search_query.lower())
                 filtered_gaps = [g for g in filtered_gaps if search_lower in g['_zone_raw']]
             
-            # ============================================
-            # MOSTRAR RESULTADOS
-            # ============================================
-            
+            # MOSTRAR
             if filtered_gaps:
-                # Remover campos auxiliares
                 display_gaps = []
                 for gap in filtered_gaps:
                     display_gap = {k: v for k, v in gap.items() if not k.startswith('_')}
@@ -1364,53 +1257,16 @@ if analyze_button:
                 df_gaps = pd.DataFrame(display_gaps)
                 st.dataframe(df_gaps, use_container_width=True, hide_index=True)
                 
-                # ============================================
-                # BOTONES DE EXPORTACIÓN
-                # ============================================
-                
                 st.divider()
                 
-                col_e1, col_e2, col_e3, col_e4 = st.columns(4)
-                
-                with col_e1:
-                    all_slugs = '\n'.join([row[get_text('slug', lang)] for row in display_gaps])
-                    st.download_button(
-                        get_text('copy_slugs', lang),
-                        data=all_slugs,
-                        file_name="gaps_slugs.txt",
-                        mime="text/plain",
-                        use_container_width=True
-                    )
-                
-                with col_e2:
-                    csv_data = export_to_csv(display_gaps, lang)
-                    st.download_button(
-                        get_text('export_csv', lang),
-                        data=csv_data,
-                        file_name="gaps_analysis.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                
-                with col_e3:
-                    json_data = export_to_json(display_gaps)
-                    st.download_button(
-                        get_text('export_json', lang),
-                        data=json_data,
-                        file_name="gaps_analysis.json",
-                        mime="application/json",
-                        use_container_width=True
-                    )
-                
-                with col_e4:
-                    md_data = export_to_markdown(display_gaps, lang)
-                    st.download_button(
-                        get_text('export_markdown', lang),
-                        data=md_data,
-                        file_name="gaps_checklist.md",
-                        mime="text/markdown",
-                        use_container_width=True
-                    )
+                csv_data = export_to_csv(display_gaps)
+                st.download_button(
+                    get_text('export_csv', lang),
+                    data=csv_data,
+                    file_name="gaps_analysis.csv",
+                    mime="text/csv",
+                    use_container_width=False
+                )
             else:
                 st.info(f"ℹ️ {get_text('no_gaps_filter', lang)}")
         else:
