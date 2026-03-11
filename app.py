@@ -1,10 +1,10 @@
 """
-Local SEO Geo-Gap Analyzer v2.2
-Sprint 2 - Precisión Avanzada
-- Dynamic Service Validation
-- Confidence Scoring System
-- Fortalezas y Empates
-- Multi-Word Zones Mejorado
+Local SEO Geo-Gap Analyzer v2.3
+Sprint 3.1 - Filtros Interactivos + UI Mejorada
+- Filtros por prioridad, competidores y zona
+- Búsqueda en tiempo real
+- Ordenamiento clickeable
+- Preparado para integración API (próximo sprint)
 """
 
 import streamlit as st
@@ -71,6 +71,18 @@ TRANSLATIONS = {
         "validated_opportunity": "Oportunidad Validada - todos los competidores están ahí",
         "emerging_niche": "Nicho Emergente - mayoría presente",
         "long_tail": "Larga Cola / Experimental - solo uno lo tiene",
+        "filter_by_priority": "Filtrar por prioridad",
+        "filter_by_competitors": "Filtrar por Nº competidores",
+        "search_zone": "Buscar zona",
+        "all": "Todas",
+        "show_results": "Mostrando",
+        "of": "de",
+        "results": "resultados",
+        "no_gaps_filter": "No hay gaps que coincidan con los filtros",
+        "export_csv": "📥 Exportar CSV",
+        "export_json": "📥 Exportar JSON",
+        "export_markdown": "📥 Exportar Markdown",
+        "copy_slugs": "📋 Copiar Slugs",
     },
     "en": {
         "title": "🎯 Local SEO Geo-Gap Analyzer",
@@ -120,6 +132,18 @@ TRANSLATIONS = {
         "validated_opportunity": "Validated Opportunity - all competitors are there",
         "emerging_niche": "Emerging Niche - majority present",
         "long_tail": "Long Tail / Experimental - only one has it",
+        "filter_by_priority": "Filter by priority",
+        "filter_by_competitors": "Filter by # competitors",
+        "search_zone": "Search zone",
+        "all": "All",
+        "show_results": "Showing",
+        "of": "of",
+        "results": "results",
+        "no_gaps_filter": "No gaps match the filters",
+        "export_csv": "📥 Export CSV",
+        "export_json": "📥 Export JSON",
+        "export_markdown": "📥 Export Markdown",
+        "copy_slugs": "📋 Copy Slugs",
     }
 }
 
@@ -160,21 +184,40 @@ SERVICES = {
     }
 }
 
-# Diccionario de exclusión automática
 EXCLUSION_DICTIONARY = {
     "es": {
-        "cerrajero": ["fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero", "carpinteria"],
-        "fontanero": ["cerrajero", "cerrajeria", "electricista", "electrico", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero"],
-        "electricista": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero"],
-        "pintor": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "reformas", "limpieza", "mudanzas", "carpintero"],
-        "reformas": ["cerrajero", "fontanero", "electricista", "pintor", "limpieza", "mudanzas"],
+        "cerrajero": ["fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero", "carpinteria", "cristalero", "jardinero", "jardineria", "aire", "climatizacion", "albañil", "albanileria", "gas", "tapicero"],
+        "fontanero": ["cerrajero", "cerrajeria", "electricista", "electrico", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero", "cristalero", "jardinero", "aire", "climatizacion", "albañil", "tapicero"],
+        "electricista": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "pintor", "pintura", "reformas", "obra", "limpieza", "mudanzas", "carpintero", "cristalero", "jardinero", "aire", "climatizacion", "albañil", "tapicero"],
+        "pintor": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "reformas", "limpieza", "mudanzas", "carpintero", "cristalero", "jardinero", "aire", "climatizacion", "albañil", "tapicero"],
+        "carpintero": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "limpieza", "mudanzas", "cristalero", "jardinero", "aire", "climatizacion", "albañil", "tapicero"],
+        "cristalero": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "limpieza", "mudanzas", "carpintero", "jardinero", "aire", "climatizacion", "albañil", "tapicero"],
+        "reformas": ["cerrajero", "fontanero", "electricista", "pintor", "limpieza", "mudanzas", "cristalero", "jardinero", "aire", "tapicero"],
+        "mudanzas": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "limpieza", "carpintero", "cristalero", "jardinero", "aire", "climatizacion", "albañil", "tapicero"],
+        "limpieza": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "mudanzas", "carpintero", "cristalero", "jardinero", "aire", "climatizacion", "albañil", "tapicero"],
+        "jardinero": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "reformas", "mudanzas", "carpintero", "cristalero", "limpieza", "aire", "climatizacion", "albañil", "tapicero"],
+        "aire-acondicionado": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "pintor", "pintura", "reformas", "mudanzas", "carpintero", "cristalero", "limpieza", "jardinero", "albañil", "tapicero"],
+        "albañil": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "pintor", "pintura", "mudanzas", "carpintero", "cristalero", "limpieza", "jardinero", "aire", "tapicero"],
+        "tecnico-climatizacion": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "pintor", "pintura", "reformas", "mudanzas", "carpintero", "cristalero", "limpieza", "jardinero", "albañil", "tapicero"],
+        "instalador-gas": ["cerrajero", "cerrajeria", "electricista", "electrico", "pintor", "pintura", "reformas", "mudanzas", "carpintero", "cristalero", "limpieza", "jardinero", "aire", "albañil", "tapicero"],
+        "tapicero": ["cerrajero", "cerrajeria", "fontanero", "fontaneria", "electricista", "electrico", "reformas", "mudanzas", "cristalero", "limpieza", "jardinero", "aire", "climatizacion", "albañil"],
     },
     "en": {
-        "locksmith": ["plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter"],
-        "plumber": ["locksmith", "locks", "electrician", "electrical", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter"],
-        "electrician": ["locksmith", "locks", "plumber", "plumbing", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter"],
-        "painter": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "remodeling", "cleaning", "moving", "carpenter"],
-        "remodeling": ["locksmith", "plumber", "electrician", "painter", "cleaning", "moving"],
+        "locksmith": ["plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter", "glazier", "gardener", "hvac", "handyman", "mason", "pest"],
+        "plumber": ["locksmith", "locks", "electrician", "electrical", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter", "glazier", "gardener", "hvac", "handyman", "mason", "pest"],
+        "electrician": ["locksmith", "locks", "plumber", "plumbing", "painter", "painting", "remodeling", "renovation", "cleaning", "moving", "carpenter", "glazier", "gardener", "hvac", "handyman", "mason", "pest"],
+        "painter": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "remodeling", "cleaning", "moving", "carpenter", "glazier", "gardener", "hvac", "handyman", "mason", "pest"],
+        "carpenter": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "cleaning", "moving", "glazier", "gardener", "hvac", "handyman", "mason", "pest"],
+        "glazier": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "cleaning", "moving", "carpenter", "gardener", "hvac", "handyman", "mason", "pest"],
+        "remodeling": ["locksmith", "plumber", "electrician", "painter", "cleaning", "moving", "glazier", "gardener", "hvac", "pest"],
+        "moving": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "cleaning", "carpenter", "glazier", "gardener", "hvac", "handyman", "mason", "pest"],
+        "cleaning": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "moving", "carpenter", "glazier", "gardener", "hvac", "handyman", "mason", "pest"],
+        "gardener": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "moving", "carpenter", "glazier", "cleaning", "hvac", "handyman", "mason", "pest"],
+        "hvac": ["locksmith", "locks", "plumber", "plumbing", "painter", "painting", "remodeling", "moving", "carpenter", "glazier", "cleaning", "gardener", "handyman", "mason", "pest"],
+        "handyman": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "moving", "carpenter", "glazier", "cleaning", "gardener", "hvac", "mason", "pest"],
+        "roofer": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "moving", "carpenter", "glazier", "cleaning", "gardener", "hvac", "pest"],
+        "mason": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "moving", "carpenter", "glazier", "cleaning", "gardener", "hvac", "pest"],
+        "pest-control": ["locksmith", "locks", "plumber", "plumbing", "electrician", "electrical", "painter", "painting", "remodeling", "moving", "carpenter", "glazier", "gardener", "hvac", "handyman", "mason"],
     }
 }
 
@@ -246,12 +289,67 @@ def get_stop_words(lang="es"):
     return STOP_WORDS.get(lang, STOP_WORDS["es"])
 
 def get_exclusion_list(service_key, lang="es"):
-    """Obtiene lista de servicios a excluir"""
     return EXCLUSION_DICTIONARY.get(lang, {}).get(service_key, [])
 
-# ============================================
-# VALIDACIÓN DE DOMINIOS
-# ============================================
+def get_service_variations(service_key, lang="es"):
+    variations = {service_key}
+    
+    if lang == "es":
+        if service_key.endswith('o'):
+            variations.add(service_key + 's')
+        elif service_key.endswith('a'):
+            variations.add(service_key + 's')
+        
+        if service_key.endswith('ero'):
+            base = service_key[:-3]
+            variations.add(base + 'eria')
+            variations.add(base + 'erias')
+        
+        special_variations = {
+            "pintor": ["pintura", "pinturas"],
+            "limpieza": ["limpiezas"],
+            "reformas": ["reforma"],
+            "mudanzas": ["mudanza"],
+            "electricista": ["electrico", "electricos", "electricidad"],
+            "fontanero": ["fontaneria", "fontanerias"],
+            "carpintero": ["carpinteria", "carpinterias"],
+            "cristalero": ["cristaleria", "cristalerias"],
+            "jardinero": ["jardineria", "jardinerias"],
+            "aire-acondicionado": ["aire", "climatizacion", "clima"],
+            "albañil": ["albanileria", "albaniles"],
+            "tecnico-climatizacion": ["climatizacion", "clima", "aire"],
+            "instalador-gas": ["gas", "instalacion-gas"],
+            "tapicero": ["tapiceria", "tapicerias"],
+        }
+        
+        if service_key in special_variations:
+            variations.update(special_variations[service_key])
+    
+    elif lang == "en":
+        variations.add(service_key + 's')
+        
+        special_variations = {
+            "locksmith": ["locks", "locksmithing"],
+            "plumber": ["plumbing"],
+            "electrician": ["electrical", "electric"],
+            "painter": ["painting"],
+            "carpenter": ["carpentry"],
+            "glazier": ["glazing", "glass"],
+            "remodeling": ["renovation", "renovations", "remodel"],
+            "moving": ["movers", "relocation"],
+            "cleaning": ["cleaners", "clean"],
+            "gardener": ["gardening", "landscaping"],
+            "hvac": ["heating", "cooling", "air-conditioning"],
+            "handyman": ["handymen", "repair", "repairs"],
+            "roofer": ["roofing"],
+            "mason": ["masonry", "bricklayer"],
+            "pest-control": ["pest", "exterminator"],
+        }
+        
+        if service_key in special_variations:
+            variations.update(special_variations[service_key])
+    
+    return list(variations)
 
 def normalize_domain(domain_input):
     if not domain_input:
@@ -316,12 +414,7 @@ def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
     
     return True, domains, ""
 
-# ============================================
-# AUTO-DISCOVERY SITEMAPS
-# ============================================
-
 def find_sitemap(domain, timeout=15):
-    """Busca automáticamente el sitemap con fallback GET si HEAD falla"""
     base_url = f"https://{domain}"
     
     sitemap_paths = [
@@ -335,15 +428,13 @@ def find_sitemap(domain, timeout=15):
     ]
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.2; +https://github.com/user/local-seo-gap)'
+        'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.3; +https://github.com/user/local-seo-gap)'
     }
     
-    # Método 1: URLs directas con HEAD request
     for path in sitemap_paths:
         try:
             url = urljoin(base_url, path)
             
-            # Intenta HEAD primero (más rápido)
             try:
                 response = requests.head(url, headers=headers, timeout=timeout, allow_redirects=True)
                 
@@ -357,12 +448,10 @@ def find_sitemap(domain, timeout=15):
                             'message': f"✅ {path}"
                         }
             except:
-                # Si HEAD falla, intenta GET (algunos servidores bloquean HEAD)
                 try:
                     response = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True, stream=True)
                     
                     if response.status_code == 200:
-                        # Leer primeros 200 bytes para verificar que es XML
                         content_start = next(response.iter_content(200), b'').decode('utf-8', errors='ignore')
                         
                         if '<?xml' in content_start or '<urlset' in content_start or '<sitemapindex' in content_start:
@@ -377,7 +466,6 @@ def find_sitemap(domain, timeout=15):
         except Exception as e:
             continue
     
-    # Método 2: robots.txt
     try:
         robots_url = urljoin(base_url, '/robots.txt')
         response = requests.get(robots_url, headers=headers, timeout=timeout)
@@ -387,7 +475,6 @@ def find_sitemap(domain, timeout=15):
                 if line.lower().startswith('sitemap:'):
                     sitemap_url = line.split(':', 1)[1].strip()
                     
-                    # Validar que la URL es accesible
                     try:
                         check = requests.head(sitemap_url, headers=headers, timeout=timeout, allow_redirects=True)
                         if check.status_code == 200:
@@ -398,7 +485,6 @@ def find_sitemap(domain, timeout=15):
                                 'message': "✅ robots.txt"
                             }
                     except:
-                        # Intentar con GET si HEAD falla
                         try:
                             check = requests.get(sitemap_url, headers=headers, timeout=timeout, allow_redirects=True, stream=True)
                             if check.status_code == 200:
@@ -413,7 +499,6 @@ def find_sitemap(domain, timeout=15):
     except:
         pass
     
-    # Método 3: No encontrado
     return {
         'sitemap_url': None,
         'method': 'none',
@@ -428,10 +513,6 @@ def find_all_sitemaps(domains_dict):
             results[key] = find_sitemap(domain)
     return results
 
-# ============================================
-# HOME ZONE DETECTION
-# ============================================
-
 def detect_home_zone_from_domain(domain, service_key, lang="es"):
     domain_lower = domain.lower()
     cities = get_cities(lang)
@@ -442,11 +523,7 @@ def detect_home_zone_from_domain(domain, service_key, lang="es"):
         if potential_zone in cities:
             return potential_zone
     
-    service_variations = [
-        service_key,
-        service_key + 's',
-        service_key + 'es',
-    ]
+    service_variations = get_service_variations(service_key, lang)
     
     for city in cities:
         for service_var in service_variations:
@@ -467,7 +544,7 @@ def detect_home_zone_from_homepage(domain, lang="es", timeout=10):
     try:
         url = f"https://{domain}"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.2)'
+            'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.3)'
         }
         
         response = requests.get(url, headers=headers, timeout=timeout)
@@ -519,10 +596,6 @@ def detect_home_zone(domain, service_key, lang="es"):
         'confidence': 0
     }
 
-# ============================================
-# LIMPIEZA DE SLUGS
-# ============================================
-
 def clean_slug(slug, stop_words, lang="es"):
     slug = slug.strip('/')
     slug = unidecode(slug)
@@ -539,7 +612,6 @@ def clean_slug(slug, stop_words, lang="es"):
     return cleaned.strip('-')
 
 def normalize_multi_word_zones(slug, lang="es"):
-    """Normaliza zonas multi-palabra avanzado"""
     connectors = {
         "es": ["el", "la", "los", "las", "de"],
         "en": ["the", "of"]
@@ -550,62 +622,38 @@ def normalize_multi_word_zones(slug, lang="es"):
     
     return '-'.join(cleaned_parts)
 
-# ============================================
-# DYNAMIC SERVICE VALIDATION (NUEVO)
-# ============================================
-
 def is_url_valid_for_service(url, service_key, lang="es", threshold=80):
-    """
-    Valida si una URL pertenece al servicio buscado.
-    Retorna True si es válida, False si contiene servicios excluidos.
-    """
     exclusion_list = get_exclusion_list(service_key, lang)
+    service_variations = get_service_variations(service_key, lang)
     
     url_lower = url.lower()
     
+    has_service = any(
+        var in url_lower or fuzz.partial_ratio(var, url_lower) > threshold
+        for var in service_variations
+    )
+    
+    if not has_service:
+        return False
+    
     for excluded_service in exclusion_list:
-        # Fuzzy matching para detectar variaciones
         if fuzz.partial_ratio(excluded_service, url_lower) > threshold:
             return False
     
     return True
 
-# ============================================
-# CONFIDENCE SCORING (NUEVO)
-# ============================================
-
 def calculate_confidence(zone, cities, url, lang="es"):
-    """
-    Calcula score de confianza basado en validaciones múltiples.
-    
-    Validaciones:
-    1. Regex match (¿zona en slug limpio?)
-    2. Top Cities match (¿zona en lista oficial?)
-    3. Multi-validation (futura expansión para SpaCy)
-    
-    Returns:
-        dict: {
-            'score': int (0-100),
-            'validations': {
-                'regex': bool,
-                'top_cities': bool,
-            }
-        }
-    """
     validations = {
         'regex': False,
         'top_cities': False,
     }
     
-    # Validación 1: Regex match
     if zone and len(zone) > 2:
         validations['regex'] = True
     
-    # Validación 2: Top Cities
     if zone in cities:
         validations['top_cities'] = True
     
-    # Calcular score
     passed = sum(validations.values())
     total = len(validations)
     score = int((passed / total) * 100)
@@ -615,59 +663,27 @@ def calculate_confidence(zone, cities, url, lang="es"):
         'validations': validations
     }
 
-# ============================================
-# SLUG ENGINE INTELIGENTE (NUEVO - SPRINT 3.3)
-# ============================================
-
 def detect_url_pattern(url, zone, service):
-    """
-    Detecta el patrón de URL usado.
-    
-    Returns:
-        str: 'zone_only', 'service_zone', 'zone_service', 'other'
-    """
     path = urlparse(url).path.strip('/').lower()
     
-    # Normalizar para matching
     zone_norm = zone.lower()
     service_norm = service.lower()
     
-    # Patrón 1: /{zona}/
     if path == zone_norm:
         return 'zone_only'
     
-    # Patrón 2: /{servicio}-{zona}/
     if path == f"{service_norm}-{zone_norm}":
         return 'service_zone'
     
-    # Patrón 3: /{zona}/{servicio}/
     if path == f"{zone_norm}/{service_norm}":
         return 'zone_service'
     
-    # Patrón 4: /{zona}-{servicio}/
     if path == f"{zone_norm}-{service_norm}":
         return 'zone_service_dash'
     
     return 'other'
 
 def suggest_best_slug(gap_zone, service_key, comp_zones_data_list, lang="es"):
-    """
-    Analiza URLs de competidores para este gap y sugiere el mejor slug.
-    
-    Args:
-        gap_zone: zona del gap
-        service_key: servicio actual
-        comp_zones_data_list: lista de [(zone, confidence, url), ...]
-        lang: idioma
-    
-    Returns:
-        dict: {
-            'slug': str,
-            'pattern': str,
-            'confidence': str (ej: "2/3 competidores")
-        }
-    """
-    # Recolectar URLs de competidores que tienen esta zona
     competitor_urls = []
     
     for comp_data in comp_zones_data_list:
@@ -676,25 +692,21 @@ def suggest_best_slug(gap_zone, service_key, comp_zones_data_list, lang="es"):
                 competitor_urls.append(url)
     
     if not competitor_urls:
-        # Sin URLs de referencia, usar patrón default
         return {
             'slug': f"/{service_key}-{gap_zone}/",
             'pattern': 'service_zone',
             'confidence': None
         }
     
-    # Detectar patrones
     patterns = {}
     for url in competitor_urls:
         pattern = detect_url_pattern(url, gap_zone, service_key)
         patterns[pattern] = patterns.get(pattern, 0) + 1
     
-    # Encontrar patrón más común
     most_common_pattern = max(patterns, key=patterns.get)
     count = patterns[most_common_pattern]
     total = len(competitor_urls)
     
-    # Generar slug según patrón
     if most_common_pattern == 'zone_only':
         slug = f"/{gap_zone}/"
     elif most_common_pattern == 'service_zone':
@@ -756,9 +768,7 @@ def filter_urls(urls, lang="es"):
     return filtered
 
 def extract_zone_from_url(url, cities, service_key, stop_words, lang="es"):
-    """Extrae zona con validación de confianza"""
     try:
-        # Validación de servicio primero
         if not is_url_valid_for_service(url, service_key, lang):
             return None, None
         
@@ -781,22 +791,6 @@ def extract_zone_from_url(url, cities, service_key, stop_words, lang="es"):
         return None, None
 
 def analyze_comprehensive(user_zones_data, comp_zones_data_list, home_zone):
-    """
-    Análisis completo: Gaps, Fortalezas, Empates
-    
-    Args:
-        user_zones_data: [(zone, confidence, url), ...]
-        comp_zones_data_list: [[(zone, confidence, url), ...], ...]
-        home_zone: str
-    
-    Returns:
-        dict: {
-            'gaps': [...],
-            'strengths': {...},
-            'ties': [...]
-        }
-    """
-    # Extraer solo zonas (sin confidence)
     user_zones = set([z for z, _, _ in user_zones_data if z])
     user_zones.discard(home_zone)
     
@@ -809,13 +803,11 @@ def analyze_comprehensive(user_zones_data, comp_zones_data_list, home_zone):
         comp_zones_lists.append(comp_zones)
         all_comp_zones.update(comp_zones)
     
-    # GAPS: lo que competidores tienen y usuario no
     gaps = all_comp_zones - user_zones
     
-    # FORTALEZAS: lo que usuario tiene y competencia no/mínima
     strengths = {
-        'tier_1': [],  # Solo usuario (0 competidores)
-        'tier_2': []   # Usuario + 1 competidor
+        'tier_1': [],
+        'tier_2': []
     }
     
     for zone in user_zones:
@@ -826,7 +818,6 @@ def analyze_comprehensive(user_zones_data, comp_zones_data_list, home_zone):
         elif comp_count == 1:
             strengths['tier_2'].append(zone)
     
-    # EMPATES: Usuario + 2-3 competidores
     ties = []
     for zone in user_zones:
         comp_count = sum([1 for comp_zones in comp_zones_lists if zone in comp_zones])
@@ -838,6 +829,57 @@ def analyze_comprehensive(user_zones_data, comp_zones_data_list, home_zone):
         'strengths': strengths,
         'ties': ties
     }
+
+# ============================================
+# FUNCIONES DE EXPORTACIÓN
+# ============================================
+
+def export_to_csv(gaps_data, lang="es"):
+    """Genera CSV con datos de gaps"""
+    import io
+    
+    output = io.StringIO()
+    df = pd.DataFrame(gaps_data)
+    df.to_csv(output, index=False, encoding='utf-8-sig')
+    
+    return output.getvalue()
+
+def export_to_json(gaps_data):
+    """Genera JSON estructurado"""
+    import json
+    return json.dumps(gaps_data, indent=2, ensure_ascii=False)
+
+def export_to_markdown(gaps_data, lang="es"):
+    """Genera checklist Markdown para Notion/Obsidian"""
+    lines = ["# SEO Gaps - Checklist\n"]
+    
+    for gap in gaps_data:
+        priority_icon = {
+            "ALTA": "🔴",
+            "MEDIA": "🟡",
+            "BAJA": "🟢",
+            "HIGH": "🔴",
+            "MEDIUM": "🟡",
+            "LOW": "🟢"
+        }
+        
+        priority_key = get_text('priority', lang)
+        zone_key = get_text('zone', lang)
+        slug_key = get_text('slug', lang)
+        comps_key = get_text('competitors_count', lang)
+        
+        priority_raw = gap.get(priority_key, "")
+        priority = priority_raw.split()[-1] if priority_raw else ""
+        icon = priority_icon.get(priority, "⚪")
+        
+        zone = gap.get(zone_key, "")
+        slug = gap.get(slug_key, "")
+        comps = gap.get(comps_key, 0)
+        
+        line = f"- [ ] {icon} {priority} | Crear página: `{slug}` | Zona: {zone} | {comps} competidores\n"
+        lines.append(line)
+    
+    return "".join(lines)
 
 # ============================================
 # STREAMLIT UI
@@ -899,7 +941,6 @@ with col1:
         help="Solo el dominio, sin https:// ni rutas"
     )
     
-    # INPUT SITEMAP MANUAL
     user_sitemap_input = st.text_input(
         f"📄 Sitemap URL (opcional)",
         placeholder="https://tudominio.com/sitemap.xml",
@@ -966,7 +1007,6 @@ if analyze_button:
     
     st.subheader("🔍 " + get_text('extracting_urls', lang))
     
-    # USAR SITEMAP MANUAL SI SE PROPORCIONÓ
     if user_sitemap_input and user_sitemap_input.strip():
         sitemap_results = {
             'user': {
@@ -977,7 +1017,6 @@ if analyze_button:
             }
         }
         
-        # Auto-discovery solo para competidores
         with st.spinner(''):
             comp_sitemaps = find_all_sitemaps({
                 'comp1': normalized_domains['comp1'],
@@ -987,7 +1026,6 @@ if analyze_button:
         
         sitemap_results.update(comp_sitemaps)
     else:
-        # Auto-discovery para todos
         with st.spinner(''):
             sitemap_results = find_all_sitemaps(normalized_domains)
     
@@ -1007,7 +1045,6 @@ if analyze_button:
     
     st.divider()
     
-    # DETECCIÓN AUTOMÁTICA SIN CONFIRMACIÓN (TEMPORAL PARA TESTING)
     if 'home_zone' not in st.session_state:
         st.subheader("🏠 " + get_text('home_zone_detected', lang))
         
@@ -1019,11 +1056,9 @@ if analyze_button:
             )
         
         if home_zone_result['zone']:
-            # AUTO-CONFIRMAR detectada
             st.session_state.home_zone = home_zone_result['zone']
             st.success(f"✅ {get_text('home_zone_detected', lang)}: **{home_zone_result['zone'].title()}** (auto-detectada)")
         else:
-            # Si no detecta, usar dropdown
             cities = get_cities(lang)
             manual_zone = st.selectbox(
                 get_text('select_city', lang),
@@ -1044,7 +1079,6 @@ if analyze_button:
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    # Timer visual
     timer_placeholder = st.empty()
     start_time = time.time()
     
@@ -1074,11 +1108,9 @@ if analyze_button:
     cities = get_cities(lang)
     stop_words = get_stop_words(lang)
     
-    # Timer para procesamiento de zonas
     timer_placeholder = st.empty()
     start_time = time.time()
     
-    # Procesar con confidence scoring
     all_zones_data = {}
     for key, urls in all_urls.items():
         elapsed = int(time.time() - start_time)
@@ -1100,42 +1132,6 @@ if analyze_button:
     
     timer_placeholder.empty()
     
-    # ════════════════════════════════════════════════════════════
-    # COMPETITOR QUALITY CARDS - DESACTIVADO (BACKLOG)
-    # Descomentarizar cuando se necesite ver métricas de calidad
-    # ════════════════════════════════════════════════════════════
-    
-    # st.divider()
-    # st.subheader("📊 " + ("Calidad de Datos Extraídos" if lang == "es" else "Data Quality Summary"))
-    # 
-    # quality_data = {}
-    # 
-    # for key in ['user', 'comp1', 'comp2', 'comp3']:
-    #     domain = normalized_domains[key]
-    #     sitemap_result = sitemap_results[key]
-    #     total_urls = all_counts[key]['total'] if all_counts[key]['total'] > 0 else all_counts[key]['extracted']
-    #     extracted_urls = all_counts[key]['extracted']
-    #     unique_zones = len(set([z for z, _, _ in all_zones_data[key]]))
-    #     filtered_by_service = filtered_counts.get(key, 0)
-    #     
-    #     quality_data[key] = {
-    #         'domain': domain,
-    #         'sitemap_method': sitemap_result['message'],
-    #         'total_urls': total_urls,
-    #         'extracted_urls': extracted_urls,
-    #         'valid_urls': len([z for z, _, _ in all_zones_data[key]]),
-    #         'filtered_by_service': filtered_by_service,
-    #         'unique_zones': unique_zones,
-    #         'success_rate': int((len([z for z, _, _ in all_zones_data[key]]) / extracted_urls * 100)) if extracted_urls > 0 else 0
-    #     }
-    # 
-    # [RESTO DEL CÓDIGO DE QUALITY CARDS COMENTADO...]
-    
-    # ════════════════════════════════════════════════════════════
-    # FIN COMPETITOR QUALITY CARDS (BACKLOG)
-    # ════════════════════════════════════════════════════════════
-    
-    # Análisis comprehensivo
     analysis = analyze_comprehensive(
         all_zones_data['user'],
         [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
@@ -1144,20 +1140,14 @@ if analyze_button:
     
     st.divider()
     
-    # ════════════════════════════════════════════════════════════
-    # SUMMARY STATS DASHBOARD (NUEVO - SPRINT 3.1)
-    # ════════════════════════════════════════════════════════════
-    
     st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
     
-    # Calcular totales por prioridad
     high_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 3])
     
     medium_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 2])
     
     low_priority = sum([1 for gap in analysis['gaps'] if sum([1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']] if any(z == gap for z, _, _ in comp_data)]) == 1])
     
-    # Calcular gaps de baja confianza
     low_conf_count = 0
     for gap in analysis['gaps']:
         confidences = []
@@ -1169,7 +1159,6 @@ if analyze_button:
         if avg_conf < 67:
             low_conf_count += 1
     
-    # FILA 1: Métricas principales
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -1200,7 +1189,6 @@ if analyze_button:
             delta=None
         )
     
-    # FILA 2: Desglose por prioridad
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -1237,11 +1225,6 @@ if analyze_button:
     
     st.divider()
     
-    # ════════════════════════════════════════════════════════════
-    # FIN SUMMARY STATS DASHBOARD
-    # ════════════════════════════════════════════════════════════
-    
-    # TABS
     tab1, tab2, tab3, tab4 = st.tabs([
         f"🎯 {get_text('gaps_found', lang)} ({len(analysis['gaps'])})",
         f"💪 {get_text('strengths_found', lang)} ({len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2'])})",
@@ -1253,16 +1236,54 @@ if analyze_button:
         st.subheader(get_text('gaps_found', lang))
         
         if analysis['gaps']:
+            # ============================================
+            # FILTROS INTERACTIVOS (SPRINT 3.1)
+            # ============================================
+            
+            col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
+            
+            with col_f1:
+                all_text = get_text('all', lang)
+                priority_options = [
+                    all_text,
+                    get_text('high_priority', lang),
+                    get_text('medium_priority', lang),
+                    get_text('low_priority', lang)
+                ]
+                selected_priority = st.selectbox(
+                    get_text('filter_by_priority', lang),
+                    options=priority_options,
+                    index=0
+                )
+            
+            with col_f2:
+                comp_options = [all_text, "3", "2", "1"]
+                selected_comps = st.selectbox(
+                    get_text('filter_by_competitors', lang),
+                    options=comp_options,
+                    index=0
+                )
+            
+            with col_f3:
+                search_query = st.text_input(
+                    get_text('search_zone', lang),
+                    placeholder="Madrid, Barcelona, Chamberí..."
+                )
+            
+            st.divider()
+            
+            # ============================================
+            # CONSTRUCCIÓN DE GAPS DATA
+            # ============================================
+            
             gaps_data = []
             
             for gap in sorted(analysis['gaps']):
-                # Contar competidores
                 comp_count = sum([
                     1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
                     if any(z == gap for z, _, _ in comp_data)
                 ])
                 
-                # Obtener confidence promedio
                 confidences = []
                 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
                     for z, conf, _ in comp_data:
@@ -1271,7 +1292,6 @@ if analyze_button:
                 
                 avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
                 
-                # Prioridad
                 if comp_count == 3:
                     priority = get_text('high_priority', lang)
                     color = "🔴"
@@ -1282,7 +1302,6 @@ if analyze_button:
                     priority = get_text('low_priority', lang)
                     color = "🟢"
                 
-                # SLUG ENGINE INTELIGENTE (NUEVO)
                 slug_suggestion = suggest_best_slug(
                     gap, 
                     selected_service, 
@@ -1290,17 +1309,18 @@ if analyze_button:
                     lang
                 )
                 
-                # Solo mostrar gaps con confianza >= 67%
                 if avg_conf >= 67:
                     gap_row = {
                         get_text('priority', lang): f"{color} {priority}",
                         get_text('zone', lang): gap.title(),
                         get_text('slug', lang): slug_suggestion['slug'],
                         get_text('competitors_count', lang): comp_count,
-                        get_text('confidence', lang): f"{avg_conf}%"
+                        get_text('confidence', lang): f"{avg_conf}%",
+                        '_priority_raw': priority,
+                        '_comp_count_raw': comp_count,
+                        '_zone_raw': gap.lower()
                     }
                     
-                    # Agregar patrón si hay confianza
                     if slug_suggestion['confidence']:
                         if lang == "es":
                             gap_row['Patrón'] = f"{slug_suggestion['confidence']} usan {slug_suggestion['pattern']}"
@@ -1309,19 +1329,90 @@ if analyze_button:
                     
                     gaps_data.append(gap_row)
             
-            if gaps_data:
-                df_gaps = pd.DataFrame(gaps_data)
+            # ============================================
+            # APLICAR FILTROS
+            # ============================================
+            
+            filtered_gaps = gaps_data.copy()
+            
+            # Filtro por prioridad
+            if selected_priority != all_text:
+                filtered_gaps = [g for g in filtered_gaps if g['_priority_raw'] == selected_priority]
+            
+            # Filtro por N° competidores
+            if selected_comps != all_text:
+                filtered_gaps = [g for g in filtered_gaps if g['_comp_count_raw'] == int(selected_comps)]
+            
+            # Filtro por búsqueda
+            if search_query:
+                search_lower = unidecode(search_query.lower())
+                filtered_gaps = [g for g in filtered_gaps if search_lower in g['_zone_raw']]
+            
+            # ============================================
+            # MOSTRAR RESULTADOS
+            # ============================================
+            
+            if filtered_gaps:
+                # Remover campos auxiliares
+                display_gaps = []
+                for gap in filtered_gaps:
+                    display_gap = {k: v for k, v in gap.items() if not k.startswith('_')}
+                    display_gaps.append(display_gap)
+                
+                st.caption(f"{get_text('show_results', lang)}: **{len(display_gaps)}** {get_text('of', lang)} **{len(gaps_data)}** {get_text('results', lang)}")
+                
+                df_gaps = pd.DataFrame(display_gaps)
                 st.dataframe(df_gaps, use_container_width=True, hide_index=True)
                 
-                all_slugs = '\n'.join([row[get_text('slug', lang)] for row in gaps_data])
-                st.download_button(
-                    "📋 " + ("Copiar todos los slugs" if lang == "es" else "Copy all slugs"),
-                    data=all_slugs,
-                    file_name="gaps_slugs.txt",
-                    mime="text/plain"
-                )
+                # ============================================
+                # BOTONES DE EXPORTACIÓN
+                # ============================================
+                
+                st.divider()
+                
+                col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+                
+                with col_e1:
+                    all_slugs = '\n'.join([row[get_text('slug', lang)] for row in display_gaps])
+                    st.download_button(
+                        get_text('copy_slugs', lang),
+                        data=all_slugs,
+                        file_name="gaps_slugs.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+                
+                with col_e2:
+                    csv_data = export_to_csv(display_gaps, lang)
+                    st.download_button(
+                        get_text('export_csv', lang),
+                        data=csv_data,
+                        file_name="gaps_analysis.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                with col_e3:
+                    json_data = export_to_json(display_gaps)
+                    st.download_button(
+                        get_text('export_json', lang),
+                        data=json_data,
+                        file_name="gaps_analysis.json",
+                        mime="application/json",
+                        use_container_width=True
+                    )
+                
+                with col_e4:
+                    md_data = export_to_markdown(display_gaps, lang)
+                    st.download_button(
+                        get_text('export_markdown', lang),
+                        data=md_data,
+                        file_name="gaps_checklist.md",
+                        mime="text/markdown",
+                        use_container_width=True
+                    )
             else:
-                st.info("ℹ️ " + ("No hay gaps de alta confianza" if lang == "es" else "No high-confidence gaps"))
+                st.info(f"ℹ️ {get_text('no_gaps_filter', lang)}")
         else:
             st.success("🎉 " + ("¡Ya cubres todas las zonas de tus competidores!" if lang == "es" else "You already cover all competitor zones!"))
     
