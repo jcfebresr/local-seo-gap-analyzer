@@ -1,10 +1,10 @@
 """
-Local SEO Geo-Gap Analyzer v2.5
-Sprint 4.1 + 4.3 - Caché + Scoring Inteligente
-- Cache de sitemaps y APIs (ttl configurable)
-- Sistema de scoring que combina competencia + volumen
-- Priorización dinámica basada en score
-- Performance optimizado
+Local SEO Geo-Gap Analyzer v2.6
+Sprint 4.4 - Competidores Ilimitados
+- 3 competidores obligatorios
+- Hasta 7 competidores adicionales (opcionales)
+- UI colapsable para competidores extra
+- Análisis dinámico según número de competidores
 """
 
 import streamlit as st
@@ -98,6 +98,10 @@ TRANSLATIONS = {
         "country_code": "País",
         "fetching_metrics": "Obteniendo métricas de API...",
         "using_cache": "✅ Usando datos en caché",
+        "add_competitors": "➕ Agregar más competidores (opcional)",
+        "competitors_required": "Competidores Obligatorios",
+        "competitors_optional": "Competidores Adicionales (Opcional)",
+        "total_competitors": "Total competidores",
     },
     "en": {
         "title": "🎯 Local SEO Geo-Gap Analyzer",
@@ -171,6 +175,10 @@ TRANSLATIONS = {
         "country_code": "Country",
         "fetching_metrics": "Fetching API metrics...",
         "using_cache": "✅ Using cached data",
+        "add_competitors": "➕ Add more competitors (optional)",
+        "competitors_required": "Required Competitors",
+        "competitors_optional": "Additional Competitors (Optional)",
+        "total_competitors": "Total competitors",
     }
 }
 
@@ -379,12 +387,11 @@ def get_service_variations(service_key, lang="es"):
     return list(variations)
 
 # ============================================
-# CACHING SYSTEM (SPRINT 4.1)
+# CACHING SYSTEM
 # ============================================
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def extract_urls_from_sitemap_cached(sitemap_url, max_urls=5000):
-    """Cache sitemaps por 1 hora"""
     try:
         df = adv.sitemap_to_df(sitemap_url)
         urls = df['loc'].tolist()
@@ -399,8 +406,6 @@ def extract_urls_from_sitemap_cached(sitemap_url, max_urls=5000):
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_api_data_cached(keyword, api_provider, api_key_hash, country_code):
-    """Cache API calls por 24 horas (usa hash de API key para seguridad)"""
-    # Reconstituir API call (sin exponer key en cache)
     if api_provider == "SE Ranking":
         return fetch_seranking_keyword_data_uncached(keyword, api_key_hash, country_code)
     elif api_provider == "Semrush":
@@ -410,11 +415,10 @@ def fetch_api_data_cached(keyword, api_provider, api_key_hash, country_code):
     return None
 
 def hash_api_key(api_key):
-    """Genera hash de API key para cache seguro"""
     return hashlib.sha256(api_key.encode()).hexdigest()[:16]
 
 # ============================================
-# API INTEGRATIONS (sin cache directo)
+# API INTEGRATIONS
 # ============================================
 
 def build_keyword_from_gap(service, zone, lang="es"):
@@ -505,13 +509,11 @@ def fetch_ahrefs_keyword_data_uncached(keyword, api_key, country="es"):
         return None
 
 def fetch_api_data(keyword, api_provider, api_key, country_code):
-    """Wrapper con cache"""
     api_key_hash = hash_api_key(api_key)
     return fetch_api_data_cached(keyword, api_provider, api_key_hash, country_code)
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_url_keywords_cached(url, api_provider, api_key_hash, country_code):
-    """Cache URL keywords por 24 horas"""
     if api_provider == "SE Ranking":
         return fetch_seranking_url_keywords_uncached(url, api_key_hash, country_code)
     return None
@@ -549,69 +551,41 @@ def fetch_seranking_url_keywords_uncached(url, api_key, country_code="es"):
         return None
 
 def fetch_url_keywords_api(url, api_provider, api_key, country_code):
-    """Wrapper con cache"""
     api_key_hash = hash_api_key(api_key)
     return fetch_url_keywords_cached(url, api_provider, api_key_hash, country_code)
 
 # ============================================
-# SCORING SYSTEM (SPRINT 4.3)
+# SCORING SYSTEM
 # ============================================
 
 def calculate_gap_score(comp_count, volume=0, has_api=False):
-    """
-    Sistema de scoring inteligente que combina:
-    - Competencia (40% si no hay API, 100% si hay API)
-    - Volumen de búsquedas (60% si hay API)
-    
-    Score: 0-100
-    
-    Ejemplos:
-    - 3 comps + 0 vol (sin API) → 100 (validado por competencia)
-    - 3 comps + 2000 vol → 95 (CRÍTICA - validado + demanda alta)
-    - 1 comp + 5000 vol → 88 (oportunidad de oro - baja competencia + alta demanda)
-    - 2 comps + 100 vol → 55 (nicho emergente con bajo volumen)
-    - 1 comp + 50 vol → 30 (larga cola experimental)
-    """
-    
     if not has_api or volume == 0:
-        # Sin API o sin volumen: score basado 100% en competidores
         comp_score_map = {
             3: 100,
             2: 70,
             1: 40
         }
-        return comp_score_map.get(comp_count, 0)
+        return comp_score_map.get(min(comp_count, 3), comp_count * 10)
     
-    # Con API: fórmula balanceada
-    # Normalizar competidores (0-100)
-    comp_normalized = (comp_count / 3) * 100
+    # Normalizar competidores (escala hasta 10)
+    comp_normalized = min((comp_count / 10) * 100, 100)
     
-    # Normalizar volumen (escala logarítmica para manejar rangos amplios)
-    # Asumimos: 0-100 vol = bajo, 100-1000 = medio, 1000+ = alto
+    # Normalizar volumen
     import math
     if volume <= 0:
         vol_normalized = 0
     elif volume < 100:
-        vol_normalized = (volume / 100) * 30  # 0-30
+        vol_normalized = (volume / 100) * 30
     elif volume < 1000:
-        vol_normalized = 30 + ((math.log10(volume) - 2) / 1) * 40  # 30-70
+        vol_normalized = 30 + ((math.log10(volume) - 2) / 1) * 40
     else:
-        vol_normalized = 70 + min(((math.log10(volume) - 3) / 2) * 30, 30)  # 70-100
+        vol_normalized = 70 + min(((math.log10(volume) - 3) / 2) * 30, 30)
     
-    # Fórmula ponderada
     score = (comp_normalized * 0.4) + (vol_normalized * 0.6)
     
     return int(min(score, 100))
 
 def get_priority_from_score(score, lang="es"):
-    """
-    Convierte score en prioridad con badge
-    
-    CRÍTICA (🔴🔴): 90-100
-    ALTA (🔴): 70-89
-    MEDIA (🟡): 40-69
-    BAJA (🟢): 0-39
-    """
     if score >= 90:
         return {
             'label': get_text('critical_priority', lang),
@@ -637,9 +611,8 @@ def get_priority_from_score(score, lang="es"):
             'color': "#32CD32"
         }
 
-# ============================================
-# RESTO DE FUNCIONES (sin cambios significativos)
-# ============================================
+# [Las funciones normalize_domain, is_valid_domain, find_sitemap, etc. se mantienen sin cambios...]
+# Por brevedad no las incluyo aquí pero deben estar en el código final
 
 def normalize_domain(domain_input):
     if not domain_input:
@@ -678,31 +651,30 @@ def is_valid_domain(domain):
     
     return True
 
-def validate_domains(user_domain, comp1, comp2, comp3, lang="es"):
-    domains = {
-        'user': normalize_domain(user_domain),
-        'comp1': normalize_domain(comp1),
-        'comp2': normalize_domain(comp2),
-        'comp3': normalize_domain(comp3),
+def validate_domains_multiple(user_domain, competitor_domains, lang="es"):
+    """Valida dominio de usuario + lista de competidores"""
+    normalized = {
+        'user': normalize_domain(user_domain)
     }
     
-    invalid = [k for k, v in domains.items() if v is None]
-    if invalid:
-        error = get_text('invalid_domain', lang)
-        labels = {
-            'user': get_text('your_domain', lang),
-            'comp1': f"{get_text('competitor', lang)} 1",
-            'comp2': f"{get_text('competitor', lang)} 2",
-            'comp3': f"{get_text('competitor', lang)} 3",
-        }
-        invalid_labels = [labels[k] for k in invalid]
-        return False, {}, f"{error}: {', '.join(invalid_labels)}"
+    if normalized['user'] is None:
+        return False, {}, f"❌ {get_text('invalid_domain', lang)}: {get_text('your_domain', lang)}"
     
-    domain_list = list(domains.values())
-    if len(domain_list) != len(set(domain_list)):
+    # Validar competidores
+    for idx, comp_domain in enumerate(competitor_domains):
+        if comp_domain:
+            norm = normalize_domain(comp_domain)
+            if norm:
+                normalized[f'comp{idx+1}'] = norm
+            else:
+                return False, {}, f"❌ {get_text('invalid_domain', lang)}: {get_text('competitor', lang)} {idx+1}"
+    
+    # Verificar duplicados
+    all_domains = list(normalized.values())
+    if len(all_domains) != len(set(all_domains)):
         return False, {}, f"❌ {get_text('duplicate_domains', lang)}"
     
-    return True, domains, ""
+    return True, normalized, ""
 
 def find_sitemap(domain, timeout=15):
     base_url = f"https://{domain}"
@@ -718,7 +690,7 @@ def find_sitemap(domain, timeout=15):
     ]
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.5; +https://github.com/user/local-seo-gap)'
+        'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.6; +https://github.com/user/local-seo-gap)'
     }
     
     for path in sitemap_paths:
@@ -834,7 +806,7 @@ def detect_home_zone_from_homepage(domain, lang="es", timeout=10):
     try:
         url = f"https://{domain}"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.5)'
+            'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.6)'
         }
         
         response = requests.get(url, headers=headers, timeout=timeout)
@@ -1072,7 +1044,7 @@ def export_to_csv(gaps_data):
     return output.getvalue()
 
 # ============================================
-# STREAMLIT UI
+# STREAMLIT UI CON COMPETIDORES ILIMITADOS
 # ============================================
 
 st.set_page_config(
@@ -1092,6 +1064,9 @@ if 'gaps_data' not in st.session_state:
 
 if 'api_enabled' not in st.session_state:
     st.session_state.api_enabled = False
+
+if 'show_extra_competitors' not in st.session_state:
+    st.session_state.show_extra_competitors = False
 
 st.title(get_text('title', st.session_state.lang))
 
@@ -1188,7 +1163,11 @@ with col2:
 
 st.divider()
 
-st.subheader(f"🔍 {get_text('competitor', lang)}s")
+# ============================================
+# COMPETIDORES: 3 OBLIGATORIOS + 7 OPCIONALES
+# ============================================
+
+st.subheader(f"🔍 {get_text('competitors_required', lang)}")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -1207,32 +1186,71 @@ with col2:
         placeholder=get_text('domain_placeholder', lang)
     )
     
-    valid_comps = sum([
+    valid_required = sum([
         bool(normalize_domain(comp1_input)),
         bool(normalize_domain(comp2_input)),
         bool(normalize_domain(comp3_input))
     ])
     
-    if valid_comps < 3:
-        st.warning(f"⚠️ {valid_comps}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
+    if valid_required < 3:
+        st.warning(f"⚠️ {valid_required}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
     else:
-        st.success(f"✅ {valid_comps}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
+        st.success(f"✅ {valid_required}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
+
+# COMPETIDORES OPCIONALES (COLAPSABLES)
+with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session_state.show_extra_competitors):
+    st.caption(("Agregar más competidores mejora la precisión del análisis" if lang == "es" else "Adding more competitors improves analysis accuracy"))
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        comp4_input = st.text_input(f"{get_text('competitor', lang)} 4", placeholder=get_text('domain_placeholder', lang), key="comp4")
+        comp5_input = st.text_input(f"{get_text('competitor', lang)} 5", placeholder=get_text('domain_placeholder', lang), key="comp5")
+        comp6_input = st.text_input(f"{get_text('competitor', lang)} 6", placeholder=get_text('domain_placeholder', lang), key="comp6")
+        comp7_input = st.text_input(f"{get_text('competitor', lang)} 7", placeholder=get_text('domain_placeholder', lang), key="comp7")
+    
+    with col2:
+        comp8_input = st.text_input(f"{get_text('competitor', lang)} 8", placeholder=get_text('domain_placeholder', lang), key="comp8")
+        comp9_input = st.text_input(f"{get_text('competitor', lang)} 9", placeholder=get_text('domain_placeholder', lang), key="comp9")
+        comp10_input = st.text_input(f"{get_text('competitor', lang)} 10", placeholder=get_text('domain_placeholder', lang), key="comp10")
+        
+        # Contar competidores opcionales
+        optional_comps = [comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
+        valid_optional = sum([bool(normalize_domain(c)) for c in optional_comps if c])
+        
+        if valid_optional > 0:
+            st.info(f"✨ +{valid_optional} " + ("competidores adicionales" if lang == "es" else "additional competitors"))
 
 st.divider()
+
+# Contar total
+all_competitor_inputs = [comp1_input, comp2_input, comp3_input, comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
+total_valid = sum([bool(normalize_domain(c)) for c in all_competitor_inputs if c])
+
+if total_valid >= 3:
+    st.success(f"🎯 {get_text('total_competitors', lang)}: **{total_valid}**")
 
 analyze_button = st.button(
     get_text('analyze_button', lang),
     type="primary",
     use_container_width=True,
-    disabled=not all([user_domain_input, comp1_input, comp2_input, comp3_input])
+    disabled=valid_required < 3 or not user_domain_input
 )
 
 if analyze_button:
     st.session_state.analysis_done = False
     st.session_state.gaps_data = []
     
-    success, normalized_domains, error_msg = validate_domains(
-        user_domain_input, comp1_input, comp2_input, comp3_input, lang
+    # Recopilar todos los competidores válidos
+    competitor_domains = []
+    for comp_input in all_competitor_inputs:
+        if comp_input:
+            norm = normalize_domain(comp_input)
+            if norm:
+                competitor_domains.append(comp_input)
+    
+    success, normalized_domains, error_msg = validate_domains_multiple(
+        user_domain_input, competitor_domains, lang
     )
     
     if not success:
@@ -1241,6 +1259,7 @@ if analyze_button:
     
     st.subheader("🔍 " + get_text('extracting_urls', lang))
     
+    # Auto-discovery sitemaps
     if user_sitemap_input and user_sitemap_input.strip():
         sitemap_results = {
             'user': {
@@ -1250,27 +1269,25 @@ if analyze_button:
                 'message': '✅ Manual'
             }
         }
-        
-        with st.spinner(''):
-            comp_sitemaps = find_all_sitemaps({
-                'comp1': normalized_domains['comp1'],
-                'comp2': normalized_domains['comp2'],
-                'comp3': normalized_domains['comp3']
-            })
-        
-        sitemap_results.update(comp_sitemaps)
     else:
-        with st.spinner(''):
-            sitemap_results = find_all_sitemaps(normalized_domains)
+        sitemap_results = {'user': find_sitemap(normalized_domains['user'])}
     
-    for key in ['user', 'comp1', 'comp2', 'comp3']:
-        result = sitemap_results[key]
+    # Encontrar sitemaps de competidores
+    comp_domains_dict = {k: v for k, v in normalized_domains.items() if k.startswith('comp')}
+    with st.spinner(''):
+        comp_sitemaps = find_all_sitemaps(comp_domains_dict)
+    
+    sitemap_results.update(comp_sitemaps)
+    
+    # Mostrar status
+    for key, result in sitemap_results.items():
         domain = normalized_domains[key]
         
         if key == 'user':
             label = get_text('your_domain', lang)
         else:
-            label = f"{get_text('competitor', lang)} {key[-1]}"
+            comp_num = key.replace('comp', '')
+            label = f"{get_text('competitor', lang)} {comp_num}"
         
         if result['success']:
             st.success(f"{label}: **{domain}** → {result['message']}")
@@ -1279,6 +1296,7 @@ if analyze_button:
     
     st.divider()
     
+    # Detección de zona base
     st.subheader("🏠 " + get_text('home_zone_detected', lang))
     
     with st.spinner(''):
@@ -1311,25 +1329,25 @@ if analyze_button:
     timer_placeholder = st.empty()
     start_time = time.time()
     
-    for idx, key in enumerate(['user', 'comp1', 'comp2', 'comp3']):
+    total_domains = len(sitemap_results)
+    
+    for idx, (key, result) in enumerate(sitemap_results.items()):
         domain = normalized_domains[key]
-        sitemap_result = sitemap_results[key]
         
         elapsed = int(time.time() - start_time)
         timer_placeholder.caption(f"⏱️ Tiempo transcurrido: {elapsed}s")
         
         status_text.text(f"{get_text('processing', lang)}: {domain}")
         
-        if sitemap_result['success']:
-            # USAR CACHE
-            urls, total = extract_urls_from_sitemap_cached(sitemap_result['sitemap_url'])
+        if result['success']:
+            urls, total = extract_urls_from_sitemap_cached(result['sitemap_url'])
             all_urls[key] = urls
             all_counts[key] = {'extracted': len(urls), 'total': total}
         else:
             all_urls[key] = []
             all_counts[key] = {'extracted': 0, 'total': 0}
         
-        progress_bar.progress((idx + 1) / 4)
+        progress_bar.progress((idx + 1) / total_domains)
     
     status_text.empty()
     progress_bar.empty()
@@ -1358,13 +1376,16 @@ if analyze_button:
     
     timer_placeholder.empty()
     
+    # Análisis comprehensivo con TODOS los competidores
+    comp_zones_list = [all_zones_data[k] for k in all_zones_data.keys() if k.startswith('comp')]
+    
     analysis = analyze_comprehensive(
         all_zones_data['user'],
-        [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
+        comp_zones_list,
         home_zone
     )
     
-    # Construir gaps_data con SCORING
+    # Construir gaps_data con scoring
     gaps_data = []
     
     if st.session_state.api_enabled and st.session_state.api_key:
@@ -1372,13 +1393,14 @@ if analyze_button:
         api_progress = st.progress(0)
         
         for idx, gap in enumerate(sorted(analysis['gaps'])):
+            # Contar competidores con este gap
             comp_count = sum([
-                1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
+                1 for comp_data in comp_zones_list
                 if any(z == gap for z, _, _ in comp_data)
             ])
             
             confidences = []
-            for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
+            for comp_data in comp_zones_list:
                 for z, conf, _ in comp_data:
                     if z == gap and conf:
                         confidences.append(conf['score'])
@@ -1389,11 +1411,10 @@ if analyze_button:
                 slug_data = suggest_best_slug(
                     gap, 
                     selected_service, 
-                    [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
+                    comp_zones_list,
                     lang
                 )
                 
-                # FETCH API DATA (CON CACHE)
                 keyword = build_keyword_from_gap(selected_service, gap, lang)
                 api_data = fetch_api_data(
                     keyword,
@@ -1405,11 +1426,9 @@ if analyze_button:
                 volume = api_data.get('volume', 0) if api_data else 0
                 kd = api_data.get('kd', 0) if api_data else 0
                 
-                # CALCULAR SCORE
                 score = calculate_gap_score(comp_count, volume, has_api=True)
                 priority_info = get_priority_from_score(score, lang)
                 
-                # FETCH URL KEYWORDS (CON CACHE)
                 url_keywords_data = None
                 if slug_data['urls']:
                     first_url = slug_data['urls'][0]
@@ -1446,15 +1465,15 @@ if analyze_button:
         
         api_progress.empty()
     else:
-        # SIN API - SCORING SIMPLE
+        # SIN API
         for gap in sorted(analysis['gaps']):
             comp_count = sum([
-                1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
+                1 for comp_data in comp_zones_list
                 if any(z == gap for z, _, _ in comp_data)
             ])
             
             confidences = []
-            for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
+            for comp_data in comp_zones_list:
                 for z, conf, _ in comp_data:
                     if z == gap and conf:
                         confidences.append(conf['score'])
@@ -1464,12 +1483,11 @@ if analyze_button:
             slug_data = suggest_best_slug(
                 gap, 
                 selected_service, 
-                [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']],
+                comp_zones_list,
                 lang
             )
             
             if avg_conf >= 67:
-                # CALCULAR SCORE SIN API
                 score = calculate_gap_score(comp_count, 0, has_api=False)
                 priority_info = get_priority_from_score(score, lang)
                 
@@ -1489,7 +1507,6 @@ if analyze_button:
                 
                 gaps_data.append(gap_row)
     
-    # ORDENAR POR SCORE (mayor a menor)
     gaps_data = sorted(gaps_data, key=lambda x: x.get('_score', 0), reverse=True)
     
     st.session_state.gaps_data = gaps_data
@@ -1497,11 +1514,12 @@ if analyze_button:
     st.session_state.all_zones_data = all_zones_data
     st.session_state.analysis_done = True
     st.session_state.home_zone = home_zone
+    st.session_state.total_competitors = total_valid
     
     st.rerun()
 
 # ============================================
-# MOSTRAR RESULTADOS
+# MOSTRAR RESULTADOS (sin cambios significativos)
 # ============================================
 
 if st.session_state.analysis_done:
@@ -1513,6 +1531,8 @@ if st.session_state.analysis_done:
     st.divider()
     
     st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
+    
+    st.caption(f"🎯 {get_text('total_competitors', lang)}: **{st.session_state.total_competitors}**")
     
     critical_priority = sum([1 for g in gaps_data if g.get('_score', 0) >= 90])
     high_priority = sum([1 for g in gaps_data if 70 <= g.get('_score', 0) < 90])
@@ -1616,7 +1636,9 @@ if st.session_state.analysis_done:
                 )
             
             with col_f2:
-                comp_options = [all_text, "3", "2", "1"]
+                # Generar opciones dinámicas basadas en total de competidores
+                max_comps = max([g.get('_comp_count_raw', 0) for g in gaps_data])
+                comp_options = [all_text] + [str(i) for i in range(1, max_comps + 1)]
                 selected_comps = st.selectbox(
                     get_text('filter_by_competitors', lang),
                     options=comp_options,
@@ -1667,84 +1689,4 @@ if st.session_state.analysis_done:
                     use_container_width=False
                 )
             else:
-                st.info(f"ℹ️ {get_text('no_gaps_filter', lang)}")
-        else:
-            st.success("🎉 " + ("¡Ya cubres todas las zonas de tus competidores!" if lang == "es" else "You already cover all competitor zones!"))
-    
-    with tab2:
-        st.subheader(get_text('strengths_found', lang))
-        
-        strengths_data = []
-        
-        for zone in analysis['strengths']['tier_1']:
-            strengths_data.append({
-                get_text('zone', lang): zone.title(),
-                get_text('advantage', lang): get_text('max_advantage', lang),
-                get_text('competitors_count', lang): 0,
-                get_text('strategy', lang): get_text('maintain_dominance', lang)
-            })
-        
-        for zone in analysis['strengths']['tier_2']:
-            strengths_data.append({
-                get_text('zone', lang): zone.title(),
-                get_text('advantage', lang): get_text('medium_advantage', lang),
-                get_text('competitors_count', lang): 1,
-                get_text('strategy', lang): get_text('early_advantage', lang)
-            })
-        
-        if strengths_data:
-            df_strengths = pd.DataFrame(strengths_data)
-            st.dataframe(df_strengths, use_container_width=True, hide_index=True)
-        else:
-            st.info("ℹ️ " + ("No se detectaron fortalezas únicas" if lang == "es" else "No unique strengths detected"))
-    
-    with tab3:
-        st.subheader(get_text('ties_found', lang))
-        
-        if analysis['ties']:
-            ties_data = []
-            
-            for zone in sorted(analysis['ties']):
-                comp_count = sum([
-                    1 for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]
-                    if any(z == zone for z, _, _ in comp_data)
-                ])
-                
-                ties_data.append({
-                    get_text('zone', lang): zone.title(),
-                    get_text('competitors_count', lang): comp_count,
-                    get_text('strategy', lang): get_text('competitive_market', lang)
-                })
-            
-            df_ties = pd.DataFrame(ties_data)
-            st.dataframe(df_ties, use_container_width=True, hide_index=True)
-        else:
-            st.info("ℹ️ " + ("No hay mercados saturados" if lang == "es" else "No saturated markets"))
-    
-    with tab4:
-        st.subheader(get_text('low_confidence', lang))
-        
-        low_conf_gaps = []
-        
-        for gap in analysis['gaps']:
-            confidences = []
-            for comp_data in [all_zones_data['comp1'], all_zones_data['comp2'], all_zones_data['comp3']]:
-                for z, conf, _ in comp_data:
-                    if z == gap and conf:
-                        confidences.append(conf['score'])
-            
-            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
-            
-            if avg_conf < 67:
-                low_conf_gaps.append({
-                    get_text('zone', lang): gap.title(),
-                    get_text('confidence', lang): f"{avg_conf}%",
-                    get_text('slug', lang): f"/{selected_service}-{gap}/"
-                })
-        
-        if low_conf_gaps:
-            st.warning("⚠️ " + ("Estas zonas requieren verificación manual antes de crear contenido" if lang == "es" else "These zones require manual verification before creating content"))
-            df_low = pd.DataFrame(low_conf_gaps)
-            st.dataframe(df_low, use_container_width=True, hide_index=True)
-        else:
-            st.success("✅ " + ("Todos los gaps tienen alta confianza" if lang == "es" else "All gaps have high confidence"))
+                st.info(f"ℹ
