@@ -1119,13 +1119,27 @@ def add_to_domain_history(domain, history_type='user'):
         st.session_state[key] = st.session_state[key][:max_size]
 
 def get_domain_history(history_type='user'):
-    """Obtiene historial de dominios"""
+    """Obtiene historial de dominios, excluyendo el dominio actualmente en uso"""
     if history_type == 'user':
         key = 'user_domain_history'
+        current_domain_key = 'current_user_domain'
     else:
         key = 'competitor_domain_history'
+        current_domain_key = 'current_competitor_domains'
     
-    return st.session_state.get(key, [])
+    history = st.session_state.get(key, [])
+    
+    # Excluir dominios actualmente seleccionados
+    if history_type == 'user':
+        current = st.session_state.get(current_domain_key, '')
+        if current:
+            history = [d for d in history if d != normalize_domain(current)]
+    else:
+        current_list = st.session_state.get(current_domain_key, [])
+        normalized_current = [normalize_domain(d) for d in current_list if d]
+        history = [d for d in history if d not in normalized_current]
+    
+    return history
 
 def clear_domain_history():
     """Limpia todo el historial de dominios"""
@@ -1342,8 +1356,36 @@ def extract_subservices_from_urls(urls, service_key, lang="es"):
 # HTML TEMPLATE SYSTEM
 # ============================================
 
-def get_base_template(lang="es"):
-    """Retorna plantilla HTML base responsive para cualquier servicio"""
+def get_base_template(lang="es", design_profile=None):
+    """Retorna plantilla HTML base responsive con diseño adaptado de competidores"""
+    
+    # Colores por defecto (genéricos)
+    primary_color = "#667eea"
+    secondary_color = "#764ba2"
+    accent_color = "#ff6b6b"
+    text_color = "#333"
+    
+    # Si hay design_profile, usar colores de competidores
+    if design_profile and design_profile.get('primary_colors'):
+        colors = design_profile['primary_colors']
+        if len(colors) >= 1:
+            primary_color = colors[0]
+        if len(colors) >= 2:
+            secondary_color = colors[1]
+        if len(colors) >= 3:
+            accent_color = colors[2]
+    
+    # Detectar si usar gradiente (basado en competidores)
+    use_gradient = False
+    if design_profile:
+        # Si al menos 2 de 3 competidores usan gradientes
+        use_gradient = design_profile.get('analyzed_sites', 0) >= 2
+    
+    # Header background (gradiente o sólido)
+    if use_gradient:
+        header_bg = f"background: linear-gradient(135deg, {primary_color} 0%, {secondary_color} 100%);"
+    else:
+        header_bg = f"background: {primary_color};"
     
     if lang == "es":
         template = """
@@ -1674,9 +1716,9 @@ def get_faq_content(service_key, zone, lang="es"):
     
     return html
 
-def render_template(service_key, zone, user_zones, subservices, lang="es", telefono="+34900000000"):
-    """Renderiza plantilla HTML con datos reales"""
-    template = get_base_template(lang)
+def render_template(service_key, zone, user_zones, subservices, lang="es", telefono="+34900000000", design_profile=None):
+    """Renderiza plantilla HTML con datos reales y diseño adaptado"""
+    template = get_base_template(lang, design_profile)
     
     # Datos básicos
     service_display = SERVICES.get(lang, {}).get(service_key, service_key).title()
@@ -1826,7 +1868,11 @@ st.divider()
 col1, col2 = st.columns(2)
 
 with col1:
-    # Obtener historial de dominios de usuario
+    # Guardar dominio actual en session_state para filtrado
+    if 'current_user_domain' not in st.session_state:
+        st.session_state.current_user_domain = ''
+    
+    # Obtener historial de dominios de usuario (excluyendo el actual)
     user_history = get_domain_history('user')
     
     if user_history:
@@ -1849,6 +1895,9 @@ with col1:
         else:
             user_domain_input = selected_user_domain
             st.caption(f"✅ {selected_user_domain}")
+        
+        # Actualizar dominio actual en session_state
+        st.session_state.current_user_domain = user_domain_input
     else:
         user_domain_input = st.text_input(
             f"🏠 {get_text('your_domain', lang)} *",
@@ -1881,7 +1930,11 @@ st.divider()
 
 st.subheader(f"🔍 {get_text('competitors_required', lang)}")
 
-# Obtener historial de competidores
+# Guardar competidores actuales en session_state para filtrado
+if 'current_competitor_domains' not in st.session_state:
+    st.session_state.current_competitor_domains = []
+
+# Obtener historial de competidores (excluyendo los actuales)
 comp_history = get_domain_history('competitor')
 
 col1, col2 = st.columns(2)
@@ -2053,6 +2106,10 @@ with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session
         
         if valid_optional > 0:
             st.info(f"✨ +{valid_optional} " + ("competidores adicionales" if lang == "es" else "additional competitors"))
+
+# Actualizar competidores actuales en session_state
+all_competitor_inputs = [comp1_input, comp2_input, comp3_input, comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
+st.session_state.current_competitor_domains = [c for c in all_competitor_inputs if c]
 
 st.divider()
 
