@@ -1119,27 +1119,13 @@ def add_to_domain_history(domain, history_type='user'):
         st.session_state[key] = st.session_state[key][:max_size]
 
 def get_domain_history(history_type='user'):
-    """Obtiene historial de dominios, excluyendo el dominio actualmente en uso"""
+    """Obtiene historial de dominios"""
     if history_type == 'user':
         key = 'user_domain_history'
-        current_domain_key = 'current_user_domain'
     else:
         key = 'competitor_domain_history'
-        current_domain_key = 'current_competitor_domains'
     
-    history = st.session_state.get(key, [])
-    
-    # Excluir dominios actualmente seleccionados
-    if history_type == 'user':
-        current = st.session_state.get(current_domain_key, '')
-        if current:
-            history = [d for d in history if d != normalize_domain(current)]
-    else:
-        current_list = st.session_state.get(current_domain_key, [])
-        normalized_current = [normalize_domain(d) for d in current_list if d]
-        history = [d for d in history if d not in normalized_current]
-    
-    return history
+    return st.session_state.get(key, [])
 
 def clear_domain_history():
     """Limpia todo el historial de dominios"""
@@ -1868,11 +1854,7 @@ st.divider()
 col1, col2 = st.columns(2)
 
 with col1:
-    # Guardar dominio actual en session_state para filtrado
-    if 'current_user_domain' not in st.session_state:
-        st.session_state.current_user_domain = ''
-    
-    # Obtener historial de dominios de usuario (excluyendo el actual)
+    # Obtener historial de dominios de usuario
     user_history = get_domain_history('user')
     
     if user_history:
@@ -1895,9 +1877,6 @@ with col1:
         else:
             user_domain_input = selected_user_domain
             st.caption(f"✅ {selected_user_domain}")
-        
-        # Actualizar dominio actual en session_state
-        st.session_state.current_user_domain = user_domain_input
     else:
         user_domain_input = st.text_input(
             f"🏠 {get_text('your_domain', lang)} *",
@@ -1930,11 +1909,7 @@ st.divider()
 
 st.subheader(f"🔍 {get_text('competitors_required', lang)}")
 
-# Guardar competidores actuales en session_state para filtrado
-if 'current_competitor_domains' not in st.session_state:
-    st.session_state.current_competitor_domains = []
-
-# Obtener historial de competidores (excluyendo los actuales)
+# Obtener historial de competidores
 comp_history = get_domain_history('competitor')
 
 col1, col2 = st.columns(2)
@@ -2106,10 +2081,6 @@ with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session
         
         if valid_optional > 0:
             st.info(f"✨ +{valid_optional} " + ("competidores adicionales" if lang == "es" else "additional competitors"))
-
-# Actualizar competidores actuales en session_state
-all_competitor_inputs = [comp1_input, comp2_input, comp3_input, comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
-st.session_state.current_competitor_domains = [c for c in all_competitor_inputs if c]
 
 st.divider()
 
