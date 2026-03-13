@@ -35,6 +35,11 @@ TRANSLATIONS = {
         "analyze_button": "🚀 Analizar Gaps",
         "min_competitors": "❌ Debes ingresar exactamente 3 competidores",
         "invalid_domain": "❌ Dominio inválido",
+        "select_saved_domain": "Seleccionar dominio guardado",
+        "new_domain": "✏️ Escribir dominio nuevo...",
+        "clear_history": "🗑️ Limpiar historial",
+        "history_cleared": "Historial borrado",
+        "no_saved_domains": "No hay dominios guardados aún",
         "home_zone_detected": "🏠 Zona base detectada",
         "is_correct": "¿Es correcto?",
         "yes": "✓ Sí",
@@ -112,6 +117,11 @@ TRANSLATIONS = {
         "analyze_button": "🚀 Analyze Gaps",
         "min_competitors": "❌ You must enter exactly 3 competitors",
         "invalid_domain": "❌ Invalid domain",
+        "select_saved_domain": "Select saved domain",
+        "new_domain": "✏️ Enter new domain...",
+        "clear_history": "🗑️ Clear history",
+        "history_cleared": "History cleared",
+        "no_saved_domains": "No saved domains yet",
         "home_zone_detected": "🏠 Home zone detected",
         "is_correct": "Is this correct?",
         "yes": "✓ Yes",
@@ -1062,6 +1072,53 @@ def export_to_csv(gaps_data):
     return output.getvalue()
 
 # ============================================
+# DOMAIN HISTORY MANAGEMENT
+# ============================================
+
+def add_to_domain_history(domain, history_type='user'):
+    """Agrega dominio al historial (máx 10 para user, 20 para competitors)"""
+    if not domain:
+        return
+    
+    normalized = normalize_domain(domain)
+    if not normalized:
+        return
+    
+    if history_type == 'user':
+        key = 'user_domain_history'
+        max_size = 10
+    else:
+        key = 'competitor_domain_history'
+        max_size = 20
+    
+    if key not in st.session_state:
+        st.session_state[key] = []
+    
+    # Evitar duplicados y mantener orden (más reciente primero)
+    if normalized in st.session_state[key]:
+        st.session_state[key].remove(normalized)
+    
+    st.session_state[key].insert(0, normalized)
+    
+    # Limitar tamaño
+    if len(st.session_state[key]) > max_size:
+        st.session_state[key] = st.session_state[key][:max_size]
+
+def get_domain_history(history_type='user'):
+    """Obtiene historial de dominios"""
+    if history_type == 'user':
+        key = 'user_domain_history'
+    else:
+        key = 'competitor_domain_history'
+    
+    return st.session_state.get(key, [])
+
+def clear_domain_history():
+    """Limpia todo el historial de dominios"""
+    st.session_state.user_domain_history = []
+    st.session_state.competitor_domain_history = []
+
+# ============================================
 # STREAMLIT UI
 # ============================================
 
@@ -1085,6 +1142,12 @@ if 'api_enabled' not in st.session_state:
 
 if 'show_extra_competitors' not in st.session_state:
     st.session_state.show_extra_competitors = False
+
+if 'user_domain_history' not in st.session_state:
+    st.session_state.user_domain_history = []
+
+if 'competitor_domain_history' not in st.session_state:
+    st.session_state.competitor_domain_history = []
 
 st.title(get_text('title', st.session_state.lang))
 
@@ -1159,11 +1222,35 @@ st.divider()
 col1, col2 = st.columns(2)
 
 with col1:
-    user_domain_input = st.text_input(
-        f"🏠 {get_text('your_domain', lang)} *",
-        placeholder=get_text('domain_placeholder', lang),
-        help="Solo el dominio, sin https:// ni rutas"
-    )
+    # Obtener historial de dominios de usuario
+    user_history = get_domain_history('user')
+    
+    if user_history:
+        domain_options = [get_text('new_domain', lang)] + user_history
+        selected_user_domain = st.selectbox(
+            f"🏠 {get_text('your_domain', lang)} *",
+            options=domain_options,
+            index=0,
+            key='user_domain_select'
+        )
+        
+        if selected_user_domain == get_text('new_domain', lang):
+            user_domain_input = st.text_input(
+                get_text('your_domain', lang),
+                placeholder=get_text('domain_placeholder', lang),
+                help="Solo el dominio, sin https:// ni rutas",
+                label_visibility='collapsed',
+                key='user_domain_manual'
+            )
+        else:
+            user_domain_input = selected_user_domain
+            st.caption(f"✅ {selected_user_domain}")
+    else:
+        user_domain_input = st.text_input(
+            f"🏠 {get_text('your_domain', lang)} *",
+            placeholder=get_text('domain_placeholder', lang),
+            help="Solo el dominio, sin https:// ni rutas"
+        )
     
     user_sitemap_input = st.text_input(
         f"📄 Sitemap URL (opcional)",
@@ -1178,27 +1265,101 @@ with col2:
             st.success(f"✅ {normalized}")
         else:
             st.error(get_text('invalid_domain', lang))
+    
+    # Botón para limpiar historial
+    if user_history or get_domain_history('competitor'):
+        if st.button(get_text('clear_history', lang), key='clear_history_btn'):
+            clear_domain_history()
+            st.success(get_text('history_cleared', lang))
+            st.rerun()
 
 st.divider()
 
 st.subheader(f"🔍 {get_text('competitors_required', lang)}")
 
+# Obtener historial de competidores
+comp_history = get_domain_history('competitor')
+
 col1, col2 = st.columns(2)
 with col1:
-    comp1_input = st.text_input(
-        f"{get_text('competitor', lang)} 1 *",
-        placeholder=get_text('domain_placeholder', lang)
-    )
-    comp2_input = st.text_input(
-        f"{get_text('competitor', lang)} 2 *",
-        placeholder=get_text('domain_placeholder', lang)
-    )
+    # Competidor 1
+    if comp_history:
+        comp1_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp1 = st.selectbox(
+            f"{get_text('competitor', lang)} 1 *",
+            options=comp1_options,
+            index=0,
+            key='comp1_select'
+        )
+        
+        if selected_comp1 == get_text('new_domain', lang):
+            comp1_input = st.text_input(
+                get_text('competitor', lang) + " 1",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp1_manual'
+            )
+        else:
+            comp1_input = selected_comp1
+            st.caption(f"✅ {selected_comp1}")
+    else:
+        comp1_input = st.text_input(
+            f"{get_text('competitor', lang)} 1 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
+    
+    # Competidor 2
+    if comp_history:
+        comp2_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp2 = st.selectbox(
+            f"{get_text('competitor', lang)} 2 *",
+            options=comp2_options,
+            index=0,
+            key='comp2_select'
+        )
+        
+        if selected_comp2 == get_text('new_domain', lang):
+            comp2_input = st.text_input(
+                get_text('competitor', lang) + " 2",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp2_manual'
+            )
+        else:
+            comp2_input = selected_comp2
+            st.caption(f"✅ {selected_comp2}")
+    else:
+        comp2_input = st.text_input(
+            f"{get_text('competitor', lang)} 2 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
 
 with col2:
-    comp3_input = st.text_input(
-        f"{get_text('competitor', lang)} 3 *",
-        placeholder=get_text('domain_placeholder', lang)
-    )
+    # Competidor 3
+    if comp_history:
+        comp3_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp3 = st.selectbox(
+            f"{get_text('competitor', lang)} 3 *",
+            options=comp3_options,
+            index=0,
+            key='comp3_select'
+        )
+        
+        if selected_comp3 == get_text('new_domain', lang):
+            comp3_input = st.text_input(
+                get_text('competitor', lang) + " 3",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp3_manual'
+            )
+        else:
+            comp3_input = selected_comp3
+            st.caption(f"✅ {selected_comp3}")
+    else:
+        comp3_input = st.text_input(
+            f"{get_text('competitor', lang)} 3 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
     
     valid_required = sum([
         bool(normalize_domain(comp1_input)),
@@ -1217,15 +1378,71 @@ with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session
     col1, col2 = st.columns(2)
     
     with col1:
-        comp4_input = st.text_input(f"{get_text('competitor', lang)} 4", placeholder=get_text('domain_placeholder', lang), key="comp4")
-        comp5_input = st.text_input(f"{get_text('competitor', lang)} 5", placeholder=get_text('domain_placeholder', lang), key="comp5")
-        comp6_input = st.text_input(f"{get_text('competitor', lang)} 6", placeholder=get_text('domain_placeholder', lang), key="comp6")
-        comp7_input = st.text_input(f"{get_text('competitor', lang)} 7", placeholder=get_text('domain_placeholder', lang), key="comp7")
+        # Competidores 4-7 con autocompletado
+        if comp_history:
+            comp4_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp4 = st.selectbox(f"{get_text('competitor', lang)} 4", options=comp4_options, index=0, key="comp4_select")
+            comp4_input = st.text_input("Comp 4", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp4_manual") if selected_comp4 == get_text('new_domain', lang) else selected_comp4
+            if selected_comp4 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp4}")
+        else:
+            comp4_input = st.text_input(f"{get_text('competitor', lang)} 4", placeholder=get_text('domain_placeholder', lang), key="comp4")
+        
+        if comp_history:
+            comp5_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp5 = st.selectbox(f"{get_text('competitor', lang)} 5", options=comp5_options, index=0, key="comp5_select")
+            comp5_input = st.text_input("Comp 5", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp5_manual") if selected_comp5 == get_text('new_domain', lang) else selected_comp5
+            if selected_comp5 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp5}")
+        else:
+            comp5_input = st.text_input(f"{get_text('competitor', lang)} 5", placeholder=get_text('domain_placeholder', lang), key="comp5")
+        
+        if comp_history:
+            comp6_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp6 = st.selectbox(f"{get_text('competitor', lang)} 6", options=comp6_options, index=0, key="comp6_select")
+            comp6_input = st.text_input("Comp 6", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp6_manual") if selected_comp6 == get_text('new_domain', lang) else selected_comp6
+            if selected_comp6 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp6}")
+        else:
+            comp6_input = st.text_input(f"{get_text('competitor', lang)} 6", placeholder=get_text('domain_placeholder', lang), key="comp6")
+        
+        if comp_history:
+            comp7_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp7 = st.selectbox(f"{get_text('competitor', lang)} 7", options=comp7_options, index=0, key="comp7_select")
+            comp7_input = st.text_input("Comp 7", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp7_manual") if selected_comp7 == get_text('new_domain', lang) else selected_comp7
+            if selected_comp7 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp7}")
+        else:
+            comp7_input = st.text_input(f"{get_text('competitor', lang)} 7", placeholder=get_text('domain_placeholder', lang), key="comp7")
     
     with col2:
-        comp8_input = st.text_input(f"{get_text('competitor', lang)} 8", placeholder=get_text('domain_placeholder', lang), key="comp8")
-        comp9_input = st.text_input(f"{get_text('competitor', lang)} 9", placeholder=get_text('domain_placeholder', lang), key="comp9")
-        comp10_input = st.text_input(f"{get_text('competitor', lang)} 10", placeholder=get_text('domain_placeholder', lang), key="comp10")
+        # Competidores 8-10 con autocompletado
+        if comp_history:
+            comp8_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp8 = st.selectbox(f"{get_text('competitor', lang)} 8", options=comp8_options, index=0, key="comp8_select")
+            comp8_input = st.text_input("Comp 8", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp8_manual") if selected_comp8 == get_text('new_domain', lang) else selected_comp8
+            if selected_comp8 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp8}")
+        else:
+            comp8_input = st.text_input(f"{get_text('competitor', lang)} 8", placeholder=get_text('domain_placeholder', lang), key="comp8")
+        
+        if comp_history:
+            comp9_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp9 = st.selectbox(f"{get_text('competitor', lang)} 9", options=comp9_options, index=0, key="comp9_select")
+            comp9_input = st.text_input("Comp 9", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp9_manual") if selected_comp9 == get_text('new_domain', lang) else selected_comp9
+            if selected_comp9 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp9}")
+        else:
+            comp9_input = st.text_input(f"{get_text('competitor', lang)} 9", placeholder=get_text('domain_placeholder', lang), key="comp9")
+        
+        if comp_history:
+            comp10_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp10 = st.selectbox(f"{get_text('competitor', lang)} 10", options=comp10_options, index=0, key="comp10_select")
+            comp10_input = st.text_input("Comp 10", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp10_manual") if selected_comp10 == get_text('new_domain', lang) else selected_comp10
+            if selected_comp10 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp10}")
+        else:
+            comp10_input = st.text_input(f"{get_text('competitor', lang)} 10", placeholder=get_text('domain_placeholder', lang), key="comp10")
         
         optional_comps = [comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
         valid_optional = sum([bool(normalize_domain(c)) for c in optional_comps if c])
