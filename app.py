@@ -1620,6 +1620,9 @@ if 'user_domain_history' not in st.session_state:
 if 'competitor_domain_history' not in st.session_state:
     st.session_state.competitor_domain_history = []
 
+if 'selected_service' not in st.session_state:
+    st.session_state.selected_service = None
+
 st.title(get_text('title', st.session_state.lang))
 
 with st.sidebar:
@@ -1687,6 +1690,7 @@ selected_service_display = st.selectbox(
     index=0
 )
 selected_service = [k for k, v in services_dict.items() if v == selected_service_display][0]
+st.session_state.selected_service = selected_service
 
 st.divider()
 
@@ -2202,6 +2206,7 @@ if analyze_button:
     st.session_state.gaps_data = gaps_data
     st.session_state.analysis = analysis
     st.session_state.all_zones_data = all_zones_data
+    st.session_state.all_urls = all_urls
     st.session_state.analysis_done = True
     st.session_state.home_zone = home_zone
     st.session_state.total_competitors = total_valid
@@ -2212,6 +2217,7 @@ if st.session_state.analysis_done:
     analysis = st.session_state.analysis
     gaps_data = st.session_state.gaps_data
     all_zones_data = st.session_state.all_zones_data
+    all_urls = st.session_state.get('all_urls', {})
     home_zone = st.session_state.home_zone
     
     st.divider()
@@ -2420,7 +2426,8 @@ if st.session_state.analysis_done:
             st.info("💡 " + ("Selecciona los gaps para los que deseas generar páginas HTML" if lang == "es" else "Select gaps to generate HTML pages"))
             
             # Extraer subservicios del sitemap del usuario
-            user_urls = all_urls.get('user', [])
+            user_urls = st.session_state.get('all_urls', {}).get('user', [])
+            selected_service = st.session_state.get('selected_service', selected_service)
             subservices = extract_subservices_from_urls(user_urls, selected_service, lang)
             
             if subservices:
