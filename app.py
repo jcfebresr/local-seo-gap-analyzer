@@ -4292,3 +4292,3009 @@ if st.session_state.analysis_done:
         
         else:
             st.info("ℹ️ " + ("No hay gaps para generar páginas" if lang == "es" else "No gaps to generate pages"))
+, c)]
+
+# ============================================
+# SUBSERVICES DETECTION
+# ============================================
+
+SUBSERVICE_PATTERNS = {
+    "es": {
+        "cerrajero": ["urgente", "24h", "24-horas", "apertura", "copia-llaves", "cambio-cerradura", "bombillo", "emergencia"],
+        "fontanero": ["urgente", "24h", "desatascos", "fugas", "calderas", "calentador", "emergencia", "tuberias"],
+        "electricista": ["urgente", "24h", "instalacion", "reparacion", "certificados", "boletines", "emergencia", "cuadro-electrico"],
+        "pintor": ["interior", "exterior", "fachadas", "gotele", "lacado", "barnizado", "presupuesto"],
+        "carpintero": ["muebles", "puertas", "ventanas", "armarios", "cocinas", "tarima", "presupuesto"],
+        "cristalero": ["urgente", "ventanas", "mamparas", "espejos", "doble-acristalamiento", "emergencia"],
+        "reformas": ["integral", "cocina", "baño", "parcial", "vivienda", "local", "presupuesto"],
+        "mudanzas": ["nacional", "internacional", "embalaje", "pianos", "oficinas", "guardamuebles", "presupuesto"],
+        "limpieza": ["hogar", "oficinas", "comunidades", "fin-obra", "cristales", "presupuesto"],
+        "jardinero": ["poda", "diseño", "mantenimiento", "cesped", "riego", "presupuesto"],
+        "aire-acondicionado": ["instalacion", "reparacion", "mantenimiento", "recarga-gas", "limpieza", "presupuesto"],
+        "albañil": ["obras", "reformas", "fachadas", "tabiques", "solados", "presupuesto"],
+        "tecnico-climatizacion": ["instalacion", "reparacion", "mantenimiento", "calderas", "aerotermia", "presupuesto"],
+        "instalador-gas": ["calderas", "calentadores", "certificados", "revision", "instalacion", "presupuesto"],
+        "tapicero": ["sofas", "sillas", "cortinas", "cabeceros", "restauracion", "presupuesto"],
+    },
+    "en": {
+        "locksmith": ["emergency", "24-hour", "24h", "car-keys", "lock-change", "lock-repair", "rekey"],
+        "plumber": ["emergency", "24-hour", "drain-cleaning", "leak-repair", "water-heater", "pipe-repair"],
+        "electrician": ["emergency", "24-hour", "installation", "repair", "panel-upgrade", "outlets", "lighting"],
+        "painter": ["interior", "exterior", "cabinet-painting", "deck-staining", "estimate"],
+        "carpenter": ["cabinets", "doors", "windows", "framing", "decks", "furniture", "estimate"],
+        "glazier": ["emergency", "window-repair", "shower-doors", "mirrors", "glass-replacement"],
+        "remodeling": ["kitchen", "bathroom", "basement", "full-house", "additions", "estimate"],
+        "moving": ["local", "long-distance", "packing", "piano", "office", "storage", "estimate"],
+        "cleaning": ["house", "office", "post-construction", "deep-cleaning", "windows", "estimate"],
+        "gardener": ["lawn-care", "landscaping", "tree-trimming", "irrigation", "design", "estimate"],
+        "hvac": ["installation", "repair", "maintenance", "ac-repair", "heating-repair", "estimate"],
+        "handyman": ["repairs", "installation", "assembly", "drywall", "painting", "estimate"],
+        "roofer": ["repair", "replacement", "inspection", "gutters", "shingles", "estimate"],
+        "mason": ["brickwork", "stonework", "chimneys", "patios", "walls", "estimate"],
+        "pest-control": ["termites", "rodents", "bed-bugs", "ants", "mosquitoes", "estimate"],
+    }
+}
+
+def extract_subservices_from_urls(urls, service_key, lang="es"):
+    """Detecta subservicios del sitemap del usuario"""
+    subservices = []
+    patterns = SUBSERVICE_PATTERNS.get(lang, {}).get(service_key, [])
+    
+    for url in urls:
+        if not url or not isinstance(url, str):
+            continue
+        
+        url_lower = url.lower()
+        
+        # Buscar patrones de subservicios
+        for pattern in patterns:
+            if pattern in url_lower:
+                # Extraer título del slug
+                path = urlparse(url).path
+                slug = path.strip('/').split('/')[-1]
+                
+                # Crear entrada de subservicio
+                subservices.append({
+                    'name': slug.replace('-', ' ').title(),
+                    'url': url,
+                    'pattern': pattern
+                })
+                break
+    
+    # Eliminar duplicados por URL
+    seen = set()
+    unique_subservices = []
+    for sub in subservices:
+        if sub['url'] not in seen:
+            seen.add(sub['url'])
+            unique_subservices.append(sub)
+    
+    return unique_subservices
+
+# ============================================
+# HTML TEMPLATE SYSTEM
+# ============================================
+
+def get_base_template(lang="es", design_profile=None):
+    """Retorna plantilla HTML base responsive adaptada al diseño de competidores"""
+    
+    # Colores por defecto si no hay design profile
+    primary_color = "#667eea"
+    secondary_color = "#764ba2"
+    accent_color = "#ff6b6b"
+    primary_font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif"
+    use_gradient = True
+    
+    # Aplicar design profile si existe
+    if design_profile:
+        primary_color = design_profile.get('primary_color') or primary_color
+        secondary_color = design_profile.get('secondary_color') or secondary_color
+        accent_color = design_profile.get('accent_color') or accent_color
+        primary_font = design_profile.get('primary_font') or primary_font
+        use_gradient = design_profile.get('has_gradient', True)
+    
+    # Construir gradiente o color sólido
+    if use_gradient:
+        header_bg = f"background: linear-gradient(135deg, {primary_color} 0%, {secondary_color} 100%);"
+    else:
+        header_bg = f"background: {primary_color};"
+    
+    if lang == "es":
+        template = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{{SERVICIO_DISPLAY}} en {{ZONA_DISPLAY}} - Servicio profesional {{HORA_SERVICIO}}. Presupuesto sin compromiso. Llamar ahora.">
+    <title>{{SERVICIO_DISPLAY}} en {{ZONA_DISPLAY}} | Servicio Profesional {{HORA_SERVICIO}}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: {primary_font}; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 0 20px; }}
+        header {{ {header_bg} color: white; padding: 60px 0; text-align: center; }}
+        h1 {{ font-size: 2.5rem; margin-bottom: 1rem; }}
+        .subtitle {{ font-size: 1.2rem; opacity: 0.9; }}
+        .cta-button {{ display: inline-block; background: {accent_color}; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }}
+        .cta-button:hover {{ transform: scale(1.05); }}
+        section {{ padding: 60px 0; }}
+        h2 {{ font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }}
+        .card {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }}
+        .card h3 {{ color: {primary_color}; margin-bottom: 15px; }}
+        .zones-list, .services-list {{ list-style: none; margin-top: 20px; }}
+        .zones-list li, .services-list li {{ padding: 10px 0; border-bottom: 1px solid #eee; }}
+        .zones-list a, .services-list a {{ color: {primary_color}; text-decoration: none; font-weight: 500; }}
+        .zones-list a:hover, .services-list a:hover {{ text-decoration: underline; }}
+        .faq {{ background: #f8f9fa; }}
+        .faq-item {{ background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }}
+        .faq-item h3 {{ font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }}
+        {{TESTIMONIALS_STYLE}}
+        {{GALLERY_STYLE}}
+        {{PRICING_STYLE}}
+        footer {{ background: #2c3e50; color: white; text-align: center; padding: 40px 0; }}
+        @media (max-width: 768px) {{
+            h1 {{ font-size: 1.8rem; }}
+            .grid {{ grid-template-columns: 1fr; }}
+        }}
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>{{SERVICIO_DISPLAY}} en {{ZONA_DISPLAY}}</h1>
+            <p class="subtitle">Servicio profesional de {{SERVICIO}} en {{ZONA_DISPLAY}} {{HORA_SERVICIO}}</p>
+            <a href="tel:{{TELEFONO}}" class="cta-button">☎ Llamar Ahora</a>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2>Tu {{SERVICIO_DISPLAY}} de confianza en {{ZONA_DISPLAY}}</h2>
+            <p>Ofrecemos servicios profesionales de {{SERVICIO}} en {{ZONA_DISPLAY}} con años de experiencia. Nuestro equipo está cualificado para resolver cualquier problema relacionado con {{SERVICIO_DESCRIPCION}}.</p>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>✓ Profesionales Cualificados</h3>
+                    <p>Equipo con años de experiencia en {{SERVICIO}}</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Presupuesto Sin Compromiso</h3>
+                    <p>Valoración gratuita antes de iniciar el trabajo</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Garantía de Servicio</h3>
+                    <p>Todos nuestros trabajos están garantizados</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="services-section">
+        <div class="container">
+            <h2>Nuestros Servicios de {{SERVICIO_DISPLAY}}</h2>
+            {{ENLACES_SUBSERVICIOS}}
+        </div>
+    </section>
+
+    {{TESTIMONIALS_SECTION}}
+
+    {{GALLERY_SECTION}}
+
+    <section>
+        <div class="container">
+            <h2>También atendemos en zonas cercanas a {{ZONA_DISPLAY}}</h2>
+            {{ENLACES_ZONAS}}
+        </div>
+    </section>
+
+    {{PRICING_SECTION}}
+
+    <section class="faq">
+        <div class="container">
+            <h2>Preguntas Frecuentes</h2>
+            {{FAQ_CONTENT}}
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 {{SERVICIO_DISPLAY}} {{ZONA_DISPLAY}}. Todos los derechos reservados.</p>
+            <p>Servicio profesional de {{SERVICIO}} en {{ZONA_DISPLAY}} y alrededores</p>
+        </div>
+    </footer>
+
+    <script type="application/ld+json">
+    {{
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "{{SERVICIO_DISPLAY}} {{ZONA_DISPLAY}}",
+        "description": "Servicio profesional de {{SERVICIO}} en {{ZONA_DISPLAY}}",
+        "address": {{
+            "@type": "PostalAddress",
+            "addressLocality": "{{ZONA_DISPLAY}}",
+            "addressCountry": "ES"
+        }},
+        "telephone": "{{TELEFONO}}",
+        "areaServed": "{{ZONA_DISPLAY}}"
+    }}
+    </script>
+</body>
+</html>
+"""
+    else:  # English
+        template = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{SERVICIO_DISPLAY} in {ZONA_DISPLAY} - Professional {HORA_SERVICIO} service. Free estimates. Call now.">
+    <title>{SERVICIO_DISPLAY} in {ZONA_DISPLAY} | Professional {HORA_SERVICIO} Service</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 60px 0; text-align: center; }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        .subtitle { font-size: 1.2rem; opacity: 0.9; }
+        .cta-button { display: inline-block; background: #ff6b6b; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
+        .cta-button:hover { transform: scale(1.05); }
+        section { padding: 60px 0; }
+        h2 { font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .card h3 { color: #667eea; margin-bottom: 15px; }
+        .zones-list, .services-list { list-style: none; margin-top: 20px; }
+        .zones-list li, .services-list li { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .zones-list a, .services-list a { color: #667eea; text-decoration: none; font-weight: 500; }
+        .zones-list a:hover, .services-list a:hover { text-decoration: underline; }
+        .faq { background: #f8f9fa; }
+        .faq-item { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }
+        .faq-item h3 { font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }
+        footer { background: #2c3e50; color: white; text-align: center; padding: 40px 0; }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>{SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h1>
+            <p class="subtitle">Professional {SERVICIO} service in {ZONA_DISPLAY} {HORA_SERVICIO}</p>
+            <a href="tel:{TELEFONO}" class="cta-button">☎ Call Now</a>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2>Your Trusted {SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h2>
+            <p>We offer professional {SERVICIO} services in {ZONA_DISPLAY} with years of experience. Our qualified team can solve any problem related to {SERVICIO_DESCRIPCION}.</p>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>✓ Qualified Professionals</h3>
+                    <p>Team with years of experience in {SERVICIO}</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Free Estimates</h3>
+                    <p>Free assessment before starting work</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Service Guarantee</h3>
+                    <p>All our work is guaranteed</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="services-section">
+        <div class="container">
+            <h2>Our {SERVICIO_DISPLAY} Services</h2>
+            {ENLACES_SUBSERVICIOS}
+        </div>
+    </section>
+
+    <section>
+        <div class="container">
+            <h2>We also serve areas near {ZONA_DISPLAY}</h2>
+            {ENLACES_ZONAS}
+        </div>
+    </section>
+
+    <section class="faq">
+        <div class="container">
+            <h2>Frequently Asked Questions</h2>
+            {FAQ_CONTENT}
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 {SERVICIO_DISPLAY} {ZONA_DISPLAY}. All rights reserved.</p>
+            <p>Professional {SERVICIO} service in {ZONA_DISPLAY} and surrounding areas</p>
+        </div>
+    </footer>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "{SERVICIO_DISPLAY} {ZONA_DISPLAY}",
+        "description": "Professional {SERVICIO} service in {ZONA_DISPLAY}",
+        "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "{ZONA_DISPLAY}",
+            "addressCountry": "US"
+        },
+        "telephone": "{TELEFONO}",
+        "areaServed": "{ZONA_DISPLAY}"
+    }
+    </script>
+</body>
+</html>
+"""
+    
+    return template
+
+def get_service_description(service_key, lang="es"):
+    """Retorna descripción específica del servicio"""
+    descriptions = {
+        "es": {
+            "cerrajero": "apertura de puertas, cambio de cerraduras, copia de llaves y servicios de emergencia",
+            "fontanero": "reparación de fugas, desatascos, instalación de calderas y servicios de fontanería",
+            "electricista": "instalaciones eléctricas, reparaciones, certificados y servicios eléctricos",
+            "pintor": "pintura interior y exterior, lacado, restauración y acabados profesionales",
+            "carpintero": "fabricación e instalación de muebles, puertas, ventanas y trabajos en madera",
+            "cristalero": "instalación y reparación de cristales, ventanas, mamparas y espejos",
+            "reformas": "reformas integrales, cocinas, baños y remodelaciones completas",
+            "mudanzas": "mudanzas locales, nacionales, embalaje y almacenamiento",
+            "limpieza": "limpieza de hogares, oficinas, comunidades y servicios de limpieza profesional",
+            "jardinero": "diseño, mantenimiento de jardines, poda y servicios de jardinería",
+            "aire-acondicionado": "instalación, reparación y mantenimiento de sistemas de climatización",
+            "albañil": "obras de albañilería, reformas, fachadas y trabajos de construcción",
+            "tecnico-climatizacion": "instalación y mantenimiento de sistemas de calefacción y climatización",
+            "instalador-gas": "instalación de calderas, calentadores, certificados y revisiones de gas",
+            "tapicero": "tapizado de sofás, sillas, cortinas y restauración de muebles",
+        },
+        "en": {
+            "locksmith": "lock changes, key duplication, emergency lockout services and security solutions",
+            "plumber": "leak repairs, drain cleaning, water heater installation and plumbing services",
+            "electrician": "electrical installations, repairs, panel upgrades and electrical services",
+            "painter": "interior and exterior painting, cabinet refinishing and professional finishes",
+            "carpenter": "custom woodwork, cabinet installation, trim work and carpentry services",
+            "glazier": "window installation, glass repair, shower doors and glazing services",
+            "remodeling": "kitchen remodels, bathroom renovations and complete home renovations",
+            "moving": "local and long-distance moves, packing services and storage solutions",
+            "cleaning": "house cleaning, office cleaning, deep cleaning and professional cleaning services",
+            "gardener": "landscape design, lawn maintenance, tree care and gardening services",
+            "hvac": "AC installation, heating repair, maintenance and HVAC services",
+            "handyman": "home repairs, installations, assembly and handyman services",
+            "roofer": "roof repairs, replacements, inspections and roofing services",
+            "mason": "brickwork, stonework, concrete work and masonry services",
+            "pest-control": "pest inspections, treatments, prevention and pest control services",
+        }
+    }
+    
+    return descriptions.get(lang, {}).get(service_key, "servicios profesionales")
+
+def get_service_hora(service_key, lang="es"):
+    """Determina si el servicio es típicamente 24h o horario normal"""
+    emergency_services = ["cerrajero", "fontanero", "electricista", "cristalero", 
+                         "locksmith", "plumber", "electrician", "glazier"]
+    
+    if service_key in emergency_services:
+        return "24 horas" if lang == "es" else "24/7"
+    else:
+        return "" if lang == "es" else ""
+
+def get_faq_content(service_key, zone, lang="es"):
+    """Genera FAQs específicas por servicio"""
+    if lang == "es":
+        faqs = {
+            "cerrajero": [
+                ("¿Cuánto cuesta un cerrajero en {ZONA}?", "El precio varía según el tipo de servicio. Ofrecemos presupuesto sin compromiso antes de realizar cualquier trabajo."),
+                ("¿Tienen servicio de cerrajero 24 horas en {ZONA}?", "Sí, ofrecemos servicio de emergencia las 24 horas del día, los 7 días de la semana en {ZONA}."),
+                ("¿Cuánto tardan en llegar?", "Nuestro tiempo de respuesta en {ZONA} es generalmente de 20-30 minutos dependiendo de la zona específica."),
+            ],
+            "fontanero": [
+                ("¿Cuánto cuesta un fontanero en {ZONA}?", "El coste depende del tipo de reparación. Realizamos presupuestos gratuitos sin compromiso."),
+                ("¿Atienden emergencias de fontanería?", "Sí, disponemos de servicio de urgencias 24h para fugas y averías graves en {ZONA}."),
+                ("¿Qué servicios de fontanería ofrecen?", "Reparación de fugas, desatascos, instalación de calderas y todo tipo de servicios de fontanería."),
+            ],
+        }
+    else:
+        faqs = {
+            "locksmith": [
+                ("How much does a locksmith cost in {ZONA}?", "Pricing varies by service type. We provide free estimates before starting any work."),
+                ("Do you have 24-hour locksmith service in {ZONA}?", "Yes, we offer 24/7 emergency locksmith services in {ZONA}."),
+                ("How quickly can you arrive?", "Our typical response time in {ZONA} is 20-30 minutes depending on your exact location."),
+            ],
+            "plumber": [
+                ("How much does a plumber cost in {ZONA}?", "Cost depends on the repair needed. We provide free estimates with no obligation."),
+                ("Do you handle plumbing emergencies?", "Yes, we have 24-hour emergency service for leaks and serious issues in {ZONA}."),
+                ("What plumbing services do you offer?", "Leak repairs, drain cleaning, water heater installation and all plumbing services."),
+            ],
+        }
+    
+    # FAQs genéricas si no hay específicas
+    default_faqs = [
+        ("¿Por qué elegirnos?" if lang == "es" else "Why choose us?", 
+         "Somos profesionales con años de experiencia en {ZONA}." if lang == "es" else "We are professionals with years of experience in {ZONA}."),
+        ("¿Ofrecen garantía?" if lang == "es" else "Do you offer warranty?", 
+         "Sí, todos nuestros trabajos tienen garantía." if lang == "es" else "Yes, all our work is guaranteed."),
+    ]
+    
+    service_faqs = faqs.get(service_key, default_faqs)
+    
+    html = ""
+    for question, answer in service_faqs:
+        q = question.replace("{ZONA}", zone.title())
+        a = answer.replace("{ZONA}", zone.title())
+        html += f'<div class="faq-item"><h3>{q}</h3><p>{a}</p></div>\n'
+    
+    return html
+
+def render_template(service_key, zone, user_zones, subservices, lang="es", telefono="+34900000000", design_profile=None):
+    """Renderiza plantilla HTML con datos reales + diseño de competidores"""
+    template = get_base_template(lang, design_profile)
+    
+    # Datos básicos
+    service_display = SERVICES.get(lang, {}).get(service_key, service_key).title()
+    zona_display = zone.replace('-', ' ').title()
+    servicio_descripcion = get_service_description(service_key, lang)
+    hora_servicio = get_service_hora(service_key, lang)
+    
+    # Enlaces a zonas cercanas
+    enlaces_zonas_html = '<ul class="zones-list">\n'
+    for z in sorted(user_zones)[:10]:  # Máximo 10 zonas
+        if z != zone:  # No enlazar a sí misma
+            z_display = z.replace('-', ' ').title()
+            enlaces_zonas_html += f'    <li><a href="/{service_key}-{z}/">{service_display} en {z_display}</a></li>\n'
+    enlaces_zonas_html += '</ul>'
+    
+    # Enlaces a subservicios
+    if subservices:
+        enlaces_sub_html = '<ul class="services-list">\n'
+        for sub in subservices[:8]:  # Máximo 8 subservicios
+            enlaces_sub_html += f'    <li><a href="{sub["url"]}">{sub["name"]}</a></li>\n'
+        enlaces_sub_html += '</ul>'
+    else:
+        # Fallback: generar subservicios genéricos basados en patrones
+        fallback_patterns = SUBSERVICE_PATTERNS.get(lang, {}).get(service_key, [])
+        if fallback_patterns:
+            enlaces_sub_html = '<ul class="services-list">\n'
+            for pattern in fallback_patterns[:6]:
+                pattern_display = pattern.replace('-', ' ').title()
+                enlaces_sub_html += f'    <li><a href="/{service_key}-{pattern}/">{pattern_display}</a></li>\n'
+            enlaces_sub_html += '</ul>'
+        else:
+            enlaces_sub_html = '<p>' + ('Consulta todos nuestros servicios especializados.' if lang == 'es' else 'Check out all our specialized services.') + '</p>'
+    
+    # FAQ
+    faq_html = get_faq_content(service_key, zona_display, lang)
+    
+    # Secciones opcionales basadas en design profile
+    testimonials_style = ""
+    testimonials_section = ""
+    gallery_style = ""
+    gallery_section = ""
+    pricing_style = ""
+    pricing_section = ""
+    
+    if design_profile:
+        # Testimonials
+        if design_profile.get('has_testimonials', False):
+            testimonials_style = """
+        .testimonials { background: #f8f9fa; }
+        .testimonial-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 8px; border-left: 4px solid """ + design_profile.get('primary_color', '#667eea') + """; }
+        .testimonial-author { font-weight: bold; margin-top: 15px; color: """ + design_profile.get('primary_color', '#667eea') + """; }
+            """
+            
+            testimonials_section = """
+    <section class="testimonials">
+        <div class="container">
+            <h2>Lo que dicen nuestros clientes</h2>
+            <div class="testimonial-card">
+                <p>"Servicio excelente y muy profesional. Resolvieron mi problema rápidamente."</p>
+                <p class="testimonial-author">— Cliente satisfecho en """ + zona_display + """</p>
+            </div>
+            <div class="testimonial-card">
+                <p>"Muy recomendable. Llegaron rápido y el precio fue muy razonable."</p>
+                <p class="testimonial-author">— Cliente satisfecho en """ + zona_display + """</p>
+            </div>
+        </div>
+    </section>
+            """ if lang == 'es' else """
+    <section class="testimonials">
+        <div class="container">
+            <h2>What Our Clients Say</h2>
+            <div class="testimonial-card">
+                <p>"Excellent and very professional service. They solved my problem quickly."</p>
+                <p class="testimonial-author">— Satisfied client in """ + zona_display + """</p>
+            </div>
+            <div class="testimonial-card">
+                <p>"Highly recommended. They arrived fast and the price was very reasonable."</p>
+                <p class="testimonial-author">— Satisfied client in """ + zona_display + """</p>
+            </div>
+        </div>
+    </section>
+            """
+        
+        # Gallery
+        if design_profile.get('has_gallery', False):
+            gallery_style = """
+        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .gallery-item { aspect-ratio: 1; background: #f0f0f0; border-radius: 8px; }
+            """
+            
+            gallery_section = """
+    <section>
+        <div class="container">
+            <h2>Nuestros Trabajos</h2>
+            <div class="gallery-grid">
+                <div class="gallery-item"></div>
+                <div class="gallery-item"></div>
+                <div class="gallery-item"></div>
+                <div class="gallery-item"></div>
+            </div>
+        </div>
+    </section>
+            """ if lang == 'es' else """
+    <section>
+        <div class="container">
+            <h2>Our Work</h2>
+            <div class="gallery-grid">
+                <div class="gallery-item"></div>
+                <div class="gallery-item"></div>
+                <div class="gallery-item"></div>
+                <div class="gallery-item"></div>
+            </div>
+        </div>
+    </section>
+            """
+    
+    # Reemplazar placeholders
+    html = template.replace('{SERVICIO}', service_key)
+    html = html.replace('{SERVICIO_DISPLAY}', service_display)
+    html = html.replace('{ZONA}', zone)
+    html = html.replace('{ZONA_DISPLAY}', zona_display)
+    html = html.replace('{SERVICIO_DESCRIPCION}', servicio_descripcion)
+    html = html.replace('{HORA_SERVICIO}', hora_servicio)
+    html = html.replace('{TELEFONO}', telefono)
+    html = html.replace('{ENLACES_ZONAS}', enlaces_zonas_html)
+    html = html.replace('{ENLACES_SUBSERVICIOS}', enlaces_sub_html)
+    html = html.replace('{FAQ_CONTENT}', faq_html)
+    html = html.replace('{TESTIMONIALS_STYLE}', testimonials_style)
+    html = html.replace('{TESTIMONIALS_SECTION}', testimonials_section)
+    html = html.replace('{GALLERY_STYLE}', gallery_style)
+    html = html.replace('{GALLERY_SECTION}', gallery_section)
+    html = html.replace('{PRICING_STYLE}', pricing_style)
+    html = html.replace('{PRICING_SECTION}', pricing_section)
+    
+    # Usar doble llaves para format strings
+    html = html.replace('{{', '{').replace('}}', '}')
+    
+    return html
+
+# ============================================
+# STREAMLIT UI
+# ============================================
+
+st.set_page_config(
+    page_title="Local SEO Geo-Gap Analyzer",
+    page_icon="🎯",
+    layout="wide"
+)
+
+if 'lang' not in st.session_state:
+    st.session_state.lang = 'es'
+
+if 'analysis_done' not in st.session_state:
+    st.session_state.analysis_done = False
+
+if 'gaps_data' not in st.session_state:
+    st.session_state.gaps_data = []
+
+if 'api_enabled' not in st.session_state:
+    st.session_state.api_enabled = False
+
+if 'show_extra_competitors' not in st.session_state:
+    st.session_state.show_extra_competitors = False
+
+if 'user_domain_history' not in st.session_state:
+    st.session_state.user_domain_history = []
+
+if 'competitor_domain_history' not in st.session_state:
+    st.session_state.competitor_domain_history = []
+
+if 'selected_service' not in st.session_state:
+    st.session_state.selected_service = None
+
+st.title(get_text('title', st.session_state.lang))
+
+with st.sidebar:
+    st.subheader(get_text('language', st.session_state.lang))
+    lang_option = st.radio(
+        "Language selector",
+        options=['🇪🇸 Español', '🇬🇧 English'],
+        index=0 if st.session_state.lang == 'es' else 1,
+        label_visibility='collapsed'
+    )
+    
+    new_lang = 'es' if '🇪🇸' in lang_option else 'en'
+    if new_lang != st.session_state.lang:
+        st.session_state.lang = new_lang
+        st.session_state.analysis_done = False
+        st.rerun()
+    
+    st.divider()
+    
+    st.subheader(get_text('api_optional', st.session_state.lang))
+    
+    api_enabled = st.checkbox(
+        get_text('enable_api', st.session_state.lang),
+        value=st.session_state.api_enabled
+    )
+    
+    if api_enabled:
+        api_provider = st.selectbox(
+            get_text('api_provider', st.session_state.lang),
+            options=["SE Ranking", "Semrush", "Ahrefs"],
+            index=0
+        )
+        
+        api_key = st.text_input(
+            get_text('api_key', st.session_state.lang),
+            type="password",
+            placeholder=get_text('api_key_placeholder', st.session_state.lang)
+        )
+        
+        country_code = st.selectbox(
+            get_text('country_code', st.session_state.lang),
+            options=["es", "us", "uk", "fr", "de", "it"],
+            index=0
+        )
+        
+        st.session_state.api_enabled = True
+        st.session_state.api_provider = api_provider
+        st.session_state.api_key = api_key
+        st.session_state.country_code = country_code
+        
+        if api_key:
+            st.caption("✅ " + get_text('using_cache', st.session_state.lang))
+    else:
+        st.session_state.api_enabled = False
+
+lang = st.session_state.lang
+
+st.header("⚙️ " + ("Configuración" if lang == "es" else "Configuration"))
+
+services_dict = get_services(lang)
+service_label = get_text('service', lang)
+selected_service_display = st.selectbox(
+    service_label,
+    options=list(services_dict.values()),
+    index=0
+)
+selected_service = [k for k, v in services_dict.items() if v == selected_service_display][0]
+st.session_state.selected_service = selected_service
+
+st.divider()
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Obtener historial de dominios de usuario
+    user_history = get_domain_history('user')
+    
+    if user_history:
+        domain_options = [get_text('new_domain', lang)] + user_history
+        selected_user_domain = st.selectbox(
+            f"🏠 {get_text('your_domain', lang)} *",
+            options=domain_options,
+            index=0,
+            key='user_domain_select'
+        )
+        
+        if selected_user_domain == get_text('new_domain', lang):
+            user_domain_input = st.text_input(
+                get_text('your_domain', lang),
+                placeholder=get_text('domain_placeholder', lang),
+                help="Solo el dominio, sin https:// ni rutas",
+                label_visibility='collapsed',
+                key='user_domain_manual'
+            )
+        else:
+            user_domain_input = selected_user_domain
+            st.caption(f"✅ {selected_user_domain}")
+    else:
+        user_domain_input = st.text_input(
+            f"🏠 {get_text('your_domain', lang)} *",
+            placeholder=get_text('domain_placeholder', lang),
+            help="Solo el dominio, sin https:// ni rutas"
+        )
+    
+    user_sitemap_input = st.text_input(
+        f"📄 Sitemap URL (opcional)",
+        placeholder="https://tudominio.com/sitemap.xml",
+        help="Si tu sitemap no se detecta automáticamente, pégalo aquí"
+    )
+
+with col2:
+    if user_domain_input:
+        normalized = normalize_domain(user_domain_input)
+        if normalized:
+            st.success(f"✅ {normalized}")
+        else:
+            st.error(get_text('invalid_domain', lang))
+    
+    # Botón para limpiar historial
+    if user_history or get_domain_history('competitor'):
+        if st.button(get_text('clear_history', lang), key='clear_history_btn'):
+            clear_domain_history()
+            st.success(get_text('history_cleared', lang))
+            st.rerun()
+
+st.divider()
+
+st.subheader(f"🔍 {get_text('competitors_required', lang)}")
+
+# Obtener historial de competidores
+comp_history = get_domain_history('competitor')
+
+col1, col2 = st.columns(2)
+with col1:
+    # Competidor 1
+    if comp_history:
+        comp1_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp1 = st.selectbox(
+            f"{get_text('competitor', lang)} 1 *",
+            options=comp1_options,
+            index=0,
+            key='comp1_select'
+        )
+        
+        if selected_comp1 == get_text('new_domain', lang):
+            comp1_input = st.text_input(
+                get_text('competitor', lang) + " 1",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp1_manual'
+            )
+        else:
+            comp1_input = selected_comp1
+            st.caption(f"✅ {selected_comp1}")
+    else:
+        comp1_input = st.text_input(
+            f"{get_text('competitor', lang)} 1 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
+    
+    # Competidor 2
+    if comp_history:
+        comp2_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp2 = st.selectbox(
+            f"{get_text('competitor', lang)} 2 *",
+            options=comp2_options,
+            index=0,
+            key='comp2_select'
+        )
+        
+        if selected_comp2 == get_text('new_domain', lang):
+            comp2_input = st.text_input(
+                get_text('competitor', lang) + " 2",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp2_manual'
+            )
+        else:
+            comp2_input = selected_comp2
+            st.caption(f"✅ {selected_comp2}")
+    else:
+        comp2_input = st.text_input(
+            f"{get_text('competitor', lang)} 2 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
+
+with col2:
+    # Competidor 3
+    if comp_history:
+        comp3_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp3 = st.selectbox(
+            f"{get_text('competitor', lang)} 3 *",
+            options=comp3_options,
+            index=0,
+            key='comp3_select'
+        )
+        
+        if selected_comp3 == get_text('new_domain', lang):
+            comp3_input = st.text_input(
+                get_text('competitor', lang) + " 3",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp3_manual'
+            )
+        else:
+            comp3_input = selected_comp3
+            st.caption(f"✅ {selected_comp3}")
+    else:
+        comp3_input = st.text_input(
+            f"{get_text('competitor', lang)} 3 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
+    
+    valid_required = sum([
+        bool(normalize_domain(comp1_input)),
+        bool(normalize_domain(comp2_input)),
+        bool(normalize_domain(comp3_input))
+    ])
+    
+    if valid_required < 3:
+        st.warning(f"⚠️ {valid_required}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
+    else:
+        st.success(f"✅ {valid_required}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
+
+with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session_state.show_extra_competitors):
+    st.caption(("Agregar más competidores mejora la precisión del análisis" if lang == "es" else "Adding more competitors improves analysis accuracy"))
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Competidores 4-7 con autocompletado
+        if comp_history:
+            comp4_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp4 = st.selectbox(f"{get_text('competitor', lang)} 4", options=comp4_options, index=0, key="comp4_select")
+            comp4_input = st.text_input("Comp 4", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp4_manual") if selected_comp4 == get_text('new_domain', lang) else selected_comp4
+            if selected_comp4 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp4}")
+        else:
+            comp4_input = st.text_input(f"{get_text('competitor', lang)} 4", placeholder=get_text('domain_placeholder', lang), key="comp4")
+        
+        if comp_history:
+            comp5_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp5 = st.selectbox(f"{get_text('competitor', lang)} 5", options=comp5_options, index=0, key="comp5_select")
+            comp5_input = st.text_input("Comp 5", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp5_manual") if selected_comp5 == get_text('new_domain', lang) else selected_comp5
+            if selected_comp5 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp5}")
+        else:
+            comp5_input = st.text_input(f"{get_text('competitor', lang)} 5", placeholder=get_text('domain_placeholder', lang), key="comp5")
+        
+        if comp_history:
+            comp6_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp6 = st.selectbox(f"{get_text('competitor', lang)} 6", options=comp6_options, index=0, key="comp6_select")
+            comp6_input = st.text_input("Comp 6", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp6_manual") if selected_comp6 == get_text('new_domain', lang) else selected_comp6
+            if selected_comp6 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp6}")
+        else:
+            comp6_input = st.text_input(f"{get_text('competitor', lang)} 6", placeholder=get_text('domain_placeholder', lang), key="comp6")
+        
+        if comp_history:
+            comp7_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp7 = st.selectbox(f"{get_text('competitor', lang)} 7", options=comp7_options, index=0, key="comp7_select")
+            comp7_input = st.text_input("Comp 7", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp7_manual") if selected_comp7 == get_text('new_domain', lang) else selected_comp7
+            if selected_comp7 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp7}")
+        else:
+            comp7_input = st.text_input(f"{get_text('competitor', lang)} 7", placeholder=get_text('domain_placeholder', lang), key="comp7")
+    
+    with col2:
+        # Competidores 8-10 con autocompletado
+        if comp_history:
+            comp8_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp8 = st.selectbox(f"{get_text('competitor', lang)} 8", options=comp8_options, index=0, key="comp8_select")
+            comp8_input = st.text_input("Comp 8", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp8_manual") if selected_comp8 == get_text('new_domain', lang) else selected_comp8
+            if selected_comp8 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp8}")
+        else:
+            comp8_input = st.text_input(f"{get_text('competitor', lang)} 8", placeholder=get_text('domain_placeholder', lang), key="comp8")
+        
+        if comp_history:
+            comp9_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp9 = st.selectbox(f"{get_text('competitor', lang)} 9", options=comp9_options, index=0, key="comp9_select")
+            comp9_input = st.text_input("Comp 9", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp9_manual") if selected_comp9 == get_text('new_domain', lang) else selected_comp9
+            if selected_comp9 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp9}")
+        else:
+            comp9_input = st.text_input(f"{get_text('competitor', lang)} 9", placeholder=get_text('domain_placeholder', lang), key="comp9")
+        
+        if comp_history:
+            comp10_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp10 = st.selectbox(f"{get_text('competitor', lang)} 10", options=comp10_options, index=0, key="comp10_select")
+            comp10_input = st.text_input("Comp 10", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp10_manual") if selected_comp10 == get_text('new_domain', lang) else selected_comp10
+            if selected_comp10 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp10}")
+        else:
+            comp10_input = st.text_input(f"{get_text('competitor', lang)} 10", placeholder=get_text('domain_placeholder', lang), key="comp10")
+        
+        optional_comps = [comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
+        valid_optional = sum([bool(normalize_domain(c)) for c in optional_comps if c])
+        
+        if valid_optional > 0:
+            st.info(f"✨ +{valid_optional} " + ("competidores adicionales" if lang == "es" else "additional competitors"))
+
+st.divider()
+
+all_competitor_inputs = [comp1_input, comp2_input, comp3_input, comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
+total_valid = sum([bool(normalize_domain(c)) for c in all_competitor_inputs if c])
+
+if total_valid >= 3:
+    st.success(f"🎯 {get_text('total_competitors', lang)}: **{total_valid}**")
+
+analyze_button = st.button(
+    get_text('analyze_button', lang),
+    type="primary",
+    use_container_width=True,
+    disabled=valid_required < 3 or not user_domain_input
+)
+
+if analyze_button:
+    st.session_state.analysis_done = False
+    st.session_state.gaps_data = []
+    
+    competitor_domains = []
+    for comp_input in all_competitor_inputs:
+        if comp_input:
+            norm = normalize_domain(comp_input)
+            if norm:
+                competitor_domains.append(comp_input)
+    
+    success, normalized_domains, error_msg = validate_domains_multiple(
+        user_domain_input, competitor_domains, lang
+    )
+    
+    if not success:
+        st.error(error_msg)
+        st.stop()
+    
+    st.subheader("🔍 " + get_text('extracting_urls', lang))
+    
+    if user_sitemap_input and user_sitemap_input.strip():
+        sitemap_results = {
+            'user': {
+                'sitemap_url': user_sitemap_input.strip(),
+                'method': 'manual',
+                'success': True,
+                'message': '✅ Manual'
+            }
+        }
+    else:
+        sitemap_results = {'user': find_sitemap(normalized_domains['user'])}
+    
+    comp_domains_dict = {k: v for k, v in normalized_domains.items() if k.startswith('comp')}
+    with st.spinner(''):
+        comp_sitemaps = find_all_sitemaps(comp_domains_dict)
+    
+    sitemap_results.update(comp_sitemaps)
+    
+    for key, result in sitemap_results.items():
+        domain = normalized_domains[key]
+        
+        if key == 'user':
+            label = get_text('your_domain', lang)
+        else:
+            comp_num = key.replace('comp', '')
+            label = f"{get_text('competitor', lang)} {comp_num}"
+        
+        if result['success']:
+            st.success(f"{label}: **{domain}** → {result['message']}")
+        else:
+            st.warning(f"{label}: **{domain}** → {result['message']}")
+    
+    st.divider()
+    
+    st.subheader("🏠 " + get_text('home_zone_detected', lang))
+    
+    with st.spinner(''):
+        home_zone_result = detect_home_zone(
+            normalized_domains['user'],
+            selected_service,
+            lang
+        )
+    
+    if home_zone_result['zone']:
+        home_zone = home_zone_result['zone']
+        st.success(f"✅ {get_text('home_zone_detected', lang)}: **{home_zone.title()}**")
+    else:
+        cities = get_cities(lang)
+        home_zone = st.selectbox(
+            get_text('select_city', lang),
+            options=cities,
+            index=0
+        )
+        st.info(f"ℹ️ Zona seleccionada manualmente: **{home_zone.title()}**")
+    
+    st.subheader("📊 " + get_text('processing', lang))
+    
+    all_urls = {}
+    all_counts = {}
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    timer_placeholder = st.empty()
+    start_time = time.time()
+    
+    total_domains = len(sitemap_results)
+    
+    for idx, (key, result) in enumerate(sitemap_results.items()):
+        domain = normalized_domains[key]
+        
+        elapsed = int(time.time() - start_time)
+        timer_placeholder.caption(f"⏱️ Tiempo transcurrido: {elapsed}s")
+        
+        status_text.text(f"{get_text('processing', lang)}: {domain}")
+        
+        if result['success']:
+            urls, total = extract_urls_from_sitemap_cached(result['sitemap_url'])
+            all_urls[key] = urls
+            all_counts[key] = {'extracted': len(urls), 'total': total}
+        else:
+            all_urls[key] = []
+            all_counts[key] = {'extracted': 0, 'total': 0}
+        
+        progress_bar.progress((idx + 1) / total_domains)
+    
+    status_text.empty()
+    progress_bar.empty()
+    timer_placeholder.empty()
+    
+    cities = get_cities(lang)
+    stop_words = get_stop_words(lang)
+    
+    timer_placeholder = st.empty()
+    start_time = time.time()
+    
+    all_zones_data = {}
+    for key, urls in all_urls.items():
+        elapsed = int(time.time() - start_time)
+        timer_placeholder.caption(f"⏱️ {get_text('processing', lang)}: {elapsed}s")
+        
+        filtered = filter_urls(urls, lang)
+        zones_data = []
+        
+        for url in filtered:
+            zone, confidence = extract_zone_from_url(url, cities, selected_service, stop_words, lang)
+            if zone:
+                zones_data.append((zone, confidence, url))
+        
+        all_zones_data[key] = zones_data
+    
+    timer_placeholder.empty()
+    
+    comp_zones_list = [all_zones_data[k] for k in all_zones_data.keys() if k.startswith('comp')]
+    
+    analysis = analyze_comprehensive(
+        all_zones_data['user'],
+        comp_zones_list,
+        home_zone
+    )
+    
+    gaps_data = []
+    
+    if st.session_state.api_enabled and st.session_state.api_key:
+        st.info(f"📊 {get_text('fetching_metrics', lang)}")
+        api_progress = st.progress(0)
+        
+        for idx, gap in enumerate(sorted(analysis['gaps'])):
+            comp_count = sum([
+                1 for comp_data in comp_zones_list
+                if any(z == gap for z, _, _ in comp_data)
+            ])
+            
+            confidences = []
+            for comp_data in comp_zones_list:
+                for z, conf, _ in comp_data:
+                    if z == gap and conf:
+                        confidences.append(conf['score'])
+            
+            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+            
+            if avg_conf >= 67:
+                slug_data = suggest_best_slug(
+                    gap, 
+                    selected_service, 
+                    comp_zones_list,
+                    lang
+                )
+                
+                keyword = build_keyword_from_gap(selected_service, gap, lang)
+                api_data = fetch_api_data(
+                    keyword,
+                    st.session_state.api_provider,
+                    st.session_state.api_key,
+                    st.session_state.country_code
+                )
+                
+                volume = api_data.get('volume', 0) if api_data else 0
+                kd = api_data.get('kd', 0) if api_data else 0
+                
+                score = calculate_gap_score(comp_count, volume, has_api=True)
+                priority_info = get_priority_from_score(score, lang)
+                
+                url_keywords_data = None
+                if slug_data['urls']:
+                    first_url = slug_data['urls'][0]
+                    url_keywords_data = fetch_url_keywords_api(
+                        first_url,
+                        st.session_state.api_provider,
+                        st.session_state.api_key,
+                        st.session_state.country_code
+                    )
+                
+                gap_row = {
+                    get_text('score', lang): score,
+                    get_text('priority', lang): f"{priority_info['badge']} {priority_info['label']}",
+                    get_text('zone', lang): gap.title(),
+                    get_text('slug', lang): slug_data['slug'],
+                    get_text('search_volume', lang): volume,
+                    get_text('keyword_difficulty', lang): kd,
+                    get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
+                    get_text('competitors_count', lang): comp_count,
+                    get_text('confidence', lang): f"{avg_conf}%",
+                    '_score': score,
+                    '_priority_raw': priority_info['label'],
+                    '_comp_count_raw': comp_count,
+                    '_zone_raw': gap.lower()
+                }
+                
+                if url_keywords_data:
+                    gap_row[get_text('traffic', lang)] = url_keywords_data.get('traffic', 0)
+                    gap_row[get_text('keywords_ranking', lang)] = url_keywords_data.get('keywords', '')
+                
+                gaps_data.append(gap_row)
+            
+            api_progress.progress((idx + 1) / len(analysis['gaps']))
+        
+        api_progress.empty()
+    else:
+        for gap in sorted(analysis['gaps']):
+            comp_count = sum([
+                1 for comp_data in comp_zones_list
+                if any(z == gap for z, _, _ in comp_data)
+            ])
+            
+            confidences = []
+            for comp_data in comp_zones_list:
+                for z, conf, _ in comp_data:
+                    if z == gap and conf:
+                        confidences.append(conf['score'])
+            
+            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+            
+            slug_data = suggest_best_slug(
+                gap, 
+                selected_service, 
+                comp_zones_list,
+                lang
+            )
+            
+            if avg_conf >= 67:
+                score = calculate_gap_score(comp_count, 0, has_api=False)
+                priority_info = get_priority_from_score(score, lang)
+                
+                gap_row = {
+                    get_text('score', lang): score,
+                    get_text('priority', lang): f"{priority_info['badge']} {priority_info['label']}",
+                    get_text('zone', lang): gap.title(),
+                    get_text('slug', lang): slug_data['slug'],
+                    get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
+                    get_text('competitors_count', lang): comp_count,
+                    get_text('confidence', lang): f"{avg_conf}%",
+                    '_score': score,
+                    '_priority_raw': priority_info['label'],
+                    '_comp_count_raw': comp_count,
+                    '_zone_raw': gap.lower()
+                }
+                
+                gaps_data.append(gap_row)
+    
+    gaps_data = sorted(gaps_data, key=lambda x: x.get('_score', 0), reverse=True)
+    
+    st.session_state.gaps_data = gaps_data
+    st.session_state.analysis = analysis
+    st.session_state.all_zones_data = all_zones_data
+    st.session_state.all_urls = all_urls
+    st.session_state.analysis_done = True
+    st.session_state.home_zone = home_zone
+    st.session_state.total_competitors = total_valid
+    
+    st.rerun()
+
+if st.session_state.analysis_done:
+    analysis = st.session_state.analysis
+    gaps_data = st.session_state.gaps_data
+    all_zones_data = st.session_state.all_zones_data
+    all_urls = st.session_state.get('all_urls', {})
+    home_zone = st.session_state.home_zone
+    
+    st.divider()
+    
+    st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
+    
+    st.caption(f"🎯 {get_text('total_competitors', lang)}: **{st.session_state.total_competitors}**")
+    
+    critical_priority = sum([1 for g in gaps_data if g.get('_score', 0) >= 90])
+    high_priority = sum([1 for g in gaps_data if 70 <= g.get('_score', 0) < 90])
+    medium_priority = sum([1 for g in gaps_data if 40 <= g.get('_score', 0) < 70])
+    low_priority = sum([1 for g in gaps_data if g.get('_score', 0) < 40])
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="🎯 Total Gaps",
+            value=len(gaps_data),
+            delta=None
+        )
+    
+    with col2:
+        st.metric(
+            label="💪 " + get_text('strengths_found', lang),
+            value=len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2']),
+            delta=None
+        )
+    
+    with col3:
+        st.metric(
+            label="🏠 " + get_text('home_zone_detected', lang),
+            value=home_zone.title(),
+            delta=None
+        )
+    
+    with col4:
+        st.metric(
+            label="⚖️ " + get_text('ties_found', lang),
+            value=len(analysis['ties']),
+            delta=None
+        )
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="🔴🔴 " + get_text('critical_priority', lang),
+            value=f"{critical_priority} gaps",
+            delta=None,
+            help="Score 90-100"
+        )
+    
+    with col2:
+        st.metric(
+            label="🔴 " + get_text('high_priority', lang),
+            value=f"{high_priority} gaps",
+            delta=None,
+            help="Score 70-89"
+        )
+    
+    with col3:
+        st.metric(
+            label="🟡 " + get_text('medium_priority', lang),
+            value=f"{medium_priority} gaps",
+            delta=None,
+            help="Score 40-69"
+        )
+    
+    with col4:
+        st.metric(
+            label="🟢 " + get_text('low_priority', lang),
+            value=f"{low_priority} gaps",
+            delta=None,
+            help="Score 0-39"
+        )
+    
+    st.divider()
+    
+    tab1, tab2, tab3 = st.tabs([
+        f"🎯 {get_text('gaps_found', lang)} ({len(gaps_data)})",
+        f"💪 {get_text('strengths_found', lang)} ({len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2'])})",
+        f"📄 {get_text('generate_pages', lang)}"
+    ])
+    
+    with tab1:
+        st.subheader(get_text('gaps_found', lang))
+        
+        if gaps_data:
+            col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
+            
+            all_text = get_text('all', lang)
+            
+            with col_f1:
+                priority_options = [
+                    all_text,
+                    get_text('critical_priority', lang),
+                    get_text('high_priority', lang),
+                    get_text('medium_priority', lang),
+                    get_text('low_priority', lang)
+                ]
+                selected_priority = st.selectbox(
+                    get_text('filter_by_priority', lang),
+                    options=priority_options,
+                    index=0,
+                    key='filter_priority_select'
+                )
+            
+            with col_f2:
+                max_comps = max([g.get('_comp_count_raw', 0) for g in gaps_data]) if gaps_data else 3
+                comp_options = [all_text] + [str(i) for i in range(1, max_comps + 1)]
+                selected_comps = st.selectbox(
+                    get_text('filter_by_competitors', lang),
+                    options=comp_options,
+                    index=0,
+                    key='filter_comps_select'
+                )
+            
+            with col_f3:
+                search_query = st.text_input(
+                    get_text('search_zone', lang),
+                    placeholder="Madrid, Barcelona, Chamberí...",
+                    key='search_query_input'
+                )
+            
+            st.divider()
+            
+            filtered_gaps = gaps_data.copy()
+            
+            if selected_priority != all_text:
+                filtered_gaps = [g for g in filtered_gaps if g.get('_priority_raw') == selected_priority]
+            
+            if selected_comps != all_text:
+                filtered_gaps = [g for g in filtered_gaps if g.get('_comp_count_raw') == int(selected_comps)]
+            
+            if search_query:
+                search_lower = unidecode(search_query.lower())
+                filtered_gaps = [g for g in filtered_gaps if search_lower in g.get('_zone_raw', '')]
+            
+            if filtered_gaps:
+                display_gaps = []
+                for gap in filtered_gaps:
+                    display_gap = {k: v for k, v in gap.items() if not k.startswith('_')}
+                    display_gaps.append(display_gap)
+                
+                st.caption(f"{get_text('show_results', lang)}: **{len(display_gaps)}** {get_text('of', lang)} **{len(gaps_data)}** {get_text('results', lang)}")
+                
+                df_gaps = pd.DataFrame(display_gaps)
+                st.dataframe(df_gaps, use_container_width=True, hide_index=True)
+                
+                st.divider()
+                
+                csv_data = export_to_csv(display_gaps)
+                st.download_button(
+                    get_text('export_csv', lang),
+                    data=csv_data,
+                    file_name="gaps_analysis.csv",
+                    mime="text/csv",
+                    use_container_width=False
+                )
+            else:
+                st.info(f"ℹ️ {get_text('no_gaps_filter', lang)}")
+        else:
+            st.success("🎉 " + ("¡Ya cubres todas las zonas donde están tus competidores!" if lang == "es" else "You already cover all zones where your competitors are!"))
+    
+    with tab2:
+        st.subheader(get_text('strengths_found', lang))
+        
+        if analysis['strengths']['tier_1']:
+            st.markdown(f"### 🏆 {get_text('max_advantage', lang)}")
+            st.caption(("Zonas donde SOLO tú estás presente (0 competidores)" if lang == "es" else "Zones where ONLY you are present (0 competitors)"))
+            
+            tier1_data = []
+            for zone in sorted(analysis['strengths']['tier_1']):
+                tier1_data.append({
+                    get_text('zone', lang): zone.title(),
+                    get_text('advantage', lang): get_text('max_advantage', lang),
+                    get_text('strategy', lang): get_text('maintain_dominance', lang)
+                })
+            
+            df_tier1 = pd.DataFrame(tier1_data)
+            st.dataframe(df_tier1, use_container_width=True, hide_index=True)
+        
+        if analysis['strengths']['tier_2']:
+            st.markdown(f"### 💪 {get_text('medium_advantage', lang)}")
+            st.caption(("Zonas donde tú + 1 competidor" if lang == "es" else "Zones where you + 1 competitor"))
+            
+            tier2_data = []
+            for zone in sorted(analysis['strengths']['tier_2']):
+                tier2_data.append({
+                    get_text('zone', lang): zone.title(),
+                    get_text('advantage', lang): get_text('medium_advantage', lang),
+                    get_text('strategy', lang): get_text('early_advantage', lang)
+                })
+            
+            df_tier2 = pd.DataFrame(tier2_data)
+            st.dataframe(df_tier2, use_container_width=True, hide_index=True)
+        
+        if not analysis['strengths']['tier_1'] and not analysis['strengths']['tier_2']:
+            st.info("ℹ️ " + ("No tienes fortalezas únicas en este momento" if lang == "es" else "You don't have unique strengths at this time"))
+    
+    with tab3:
+        st.subheader(get_text('generate_pages', lang))
+        
+        if gaps_data:
+            st.info("💡 " + ("Selecciona los gaps para los que deseas generar páginas HTML" if lang == "es" else "Select gaps to generate HTML pages"))
+            
+            # Extraer subservicios del sitemap del usuario
+            user_urls = st.session_state.get('all_urls', {}).get('user', [])
+            selected_service = st.session_state.get('selected_service', selected_service)
+            subservices = extract_subservices_from_urls(user_urls, selected_service, lang)
+            
+            if subservices:
+                st.success(f"✅ {len(subservices)} " + ("subservicios detectados en tu sitemap" if lang == "es" else "subservices detected in your sitemap"))
+            
+            # Obtener zonas existentes del usuario
+            user_zones = set([z for z, _, _ in all_zones_data.get('user', []) if z])
+            
+            # Tabla con checkboxes para seleccionar gaps
+            st.markdown("### " + get_text('select_gaps', lang))
+            
+            selected_gaps = []
+            
+            for idx, gap in enumerate(gaps_data[:20]):  # Limitar a 20 para no saturar UI
+                col1, col2, col3, col4 = st.columns([0.5, 2, 1, 1])
+                
+                with col1:
+                    is_selected = st.checkbox("", key=f"select_gap_{idx}", label_visibility="collapsed")
+                
+                with col2:
+                    st.write(gap.get(get_text('zone', lang), ''))
+                
+                with col3:
+                    priority_badge = gap.get(get_text('priority', lang), '')
+                    st.write(priority_badge)
+                
+                with col4:
+                    score = gap.get(get_text('score', lang), 0)
+                    st.write(f"Score: {score}")
+                
+                if is_selected:
+                    selected_gaps.append({
+                        'zone': gap.get('_zone_raw', ''),
+                        'zone_display': gap.get(get_text('zone', lang), ''),
+                        'score': score,
+                        'priority': priority_badge
+                    })
+            
+            st.divider()
+            
+            if selected_gaps:
+                st.success(f"✅ {len(selected_gaps)} " + ("gaps seleccionados" if lang == "es" else "gaps selected"))
+                
+                # Preview de plantilla
+                if st.button(get_text('preview_template', lang), type="primary", use_container_width=True):
+                    # Preview del primer gap seleccionado
+                    first_gap = selected_gaps[0]
+                    
+                    st.markdown("---")
+                    st.markdown(f"### Preview: {first_gap['zone_display']}")
+                    
+                    # Analizar diseño de competidores para este gap
+                    with st.spinner('🎨 Analizando diseño de competidores...'):
+                        comp_zones_list = [all_zones_data[k] for k in all_zones_data.keys() if k.startswith('comp')]
+                        design_profile = analyze_competitor_designs(
+                            first_gap['zone'],
+                            comp_zones_list,
+                            selected_service,
+                            lang
+                        )
+                    
+                    if design_profile:
+                        st.success(f"✅ Diseño extraído de {design_profile.get('competitors_analyzed', 0)} competidores")
+                        
+                        # Mostrar perfil de diseño
+                        with st.expander("🎨 Perfil de Diseño Detectado", expanded=True):
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.markdown("**Colores:**")
+                                if design_profile.get('primary_color'):
+                                    st.markdown(f"🎨 Primario: `{design_profile['primary_color']}`")
+                                if design_profile.get('secondary_color'):
+                                    st.markdown(f"🎨 Secundario: `{design_profile['secondary_color']}`")
+                                if design_profile.get('accent_color'):
+                                    st.markdown(f"🎨 Acento: `{design_profile['accent_color']}`")
+                            
+                            with col2:
+                                st.markdown("**Elementos:**")
+                                st.markdown(f"{'✅' if design_profile.get('has_gradient') else '❌'} Gradientes")
+                                st.markdown(f"{'✅' if design_profile.get('has_testimonials') else '❌'} Testimonios")
+                                st.markdown(f"{'✅' if design_profile.get('has_faq') else '❌'} FAQ")
+                                st.markdown(f"{'✅' if design_profile.get('has_gallery') else '❌'} Galería")
+                            
+                            with col3:
+                                st.markdown("**CTAs Comunes:**")
+                                common_ctas = design_profile.get('common_ctas', [])
+                                for cta in common_ctas[:3]:
+                                    st.markdown(f"- {cta}")
+                    else:
+                        st.warning("⚠️ No se pudo extraer diseño. Usando plantilla por defecto.")
+                        design_profile = None
+                    
+                    # Renderizar plantilla con diseño
+                    html_preview = render_template(
+                        service_key=selected_service,
+                        zone=first_gap['zone'],
+                        user_zones=user_zones,
+                        subservices=subservices,
+                        lang=lang,
+                        telefono="+34900000000",
+                        design_profile=design_profile
+                    )
+                    
+                    # Mostrar HTML en expander
+                    with st.expander("📝 Ver código HTML", expanded=False):
+                        st.code(html_preview, language='html')
+                    
+                    # Renderizar HTML en iframe
+                    st.markdown("#### Vista previa:")
+                    st.components.v1.html(html_preview, height=800, scrolling=True)
+                    
+                    st.info("💡 " + ("Esta es una vista previa. En el siguiente paso podrás configurar WordPress para crear las páginas automáticamente." if lang == "es" else "This is a preview. In the next step you can configure WordPress to create pages automatically."))
+            
+            else:
+                st.warning("⚠️ " + ("Selecciona al menos un gap para continuar" if lang == "es" else "Select at least one gap to continue"))
+        
+        else:
+            st.info("ℹ️ " + ("No hay gaps para generar páginas" if lang == "es" else "No gaps to generate pages"))
+, c)]
+    
+    # Contar frecuencia
+    from collections import Counter
+    if valid_hex:
+        color_freq = Counter(valid_hex)
+        most_common = color_freq.most_common(3)
+        
+        if len(most_common) > 0:
+            consolidated['primary_color'] = most_common[0][0]
+        if len(most_common) > 1:
+            consolidated['secondary_color'] = most_common[1][0]
+        if len(most_common) > 2:
+            consolidated['accent_color'] = most_common[2][0]
+    
+    # Consolidar fuentes
+    all_fonts = []
+    for dna in dna_list:
+        if dna:
+            all_fonts.extend(dna.get('fonts', []))
+    
+    if all_fonts:
+        font_freq = Counter(all_fonts)
+        consolidated['primary_font'] = font_freq.most_common(1)[0][0]
+    
+    # Consolidar features (si >50% lo tiene)
+    threshold = len(dna_list) * 0.5
+    
+    gradient_count = sum([1 for dna in dna_list if dna and dna.get('has_gradient', False)])
+    testimonials_count = sum([1 for dna in dna_list if dna and dna.get('has_testimonials', False)])
+    faq_count = sum([1 for dna in dna_list if dna and dna.get('has_faq', False)])
+    pricing_count = sum([1 for dna in dna_list if dna and dna.get('has_pricing', False)])
+    gallery_count = sum([1 for dna in dna_list if dna and dna.get('has_gallery', False)])
+    
+    consolidated['has_gradient'] = gradient_count > threshold
+    consolidated['has_testimonials'] = testimonials_count > threshold
+    consolidated['has_faq'] = faq_count > threshold
+    consolidated['has_pricing'] = pricing_count > threshold
+    consolidated['has_gallery'] = gallery_count > threshold
+    
+    # Consolidar CTAs comunes
+    all_ctas = []
+    for dna in dna_list:
+        if dna:
+            all_ctas.extend(dna.get('cta_texts', []))
+    
+    if all_ctas:
+        cta_freq = Counter(all_ctas)
+        consolidated['common_ctas'] = [cta for cta, count in cta_freq.most_common(5)]
+    
+    # Consolidar secciones comunes
+    all_sections = []
+    for dna in dna_list:
+        if dna:
+            all_sections.extend(dna.get('sections', []))
+    
+    if all_sections:
+        section_freq = Counter(all_sections)
+        consolidated['common_sections'] = [sec for sec, count in section_freq.most_common(8)]
+    
+    return consolidated
+
+def analyze_competitor_designs(gap_zone, comp_zones_data_list, selected_service, lang="es"):
+    """Analiza diseños de competidores para una zona específica"""
+    competitor_urls = []
+    
+    # Recopilar URLs de competidores para esta zona
+    for comp_data in comp_zones_data_list:
+        for zone, conf, url in comp_data:
+            if zone == gap_zone:
+                competitor_urls.append(url)
+    
+    if not competitor_urls:
+        return None
+    
+    # Scraping de cada URL
+    dna_list = []
+    
+    for url in competitor_urls[:3]:  # Máximo 3 URLs para no saturar
+        dna = extract_design_dna_from_url(url)
+        if dna:
+            dna_list.append(dna)
+    
+    # Consolidar en un solo perfil
+    if dna_list:
+        return consolidate_design_dna(dna_list)
+    
+    return None
+
+# ============================================
+# SUBSERVICES DETECTION
+# ============================================
+
+SUBSERVICE_PATTERNS = {
+    "es": {
+        "cerrajero": ["urgente", "24h", "24-horas", "apertura", "copia-llaves", "cambio-cerradura", "bombillo", "emergencia"],
+        "fontanero": ["urgente", "24h", "desatascos", "fugas", "calderas", "calentador", "emergencia", "tuberias"],
+        "electricista": ["urgente", "24h", "instalacion", "reparacion", "certificados", "boletines", "emergencia", "cuadro-electrico"],
+        "pintor": ["interior", "exterior", "fachadas", "gotele", "lacado", "barnizado", "presupuesto"],
+        "carpintero": ["muebles", "puertas", "ventanas", "armarios", "cocinas", "tarima", "presupuesto"],
+        "cristalero": ["urgente", "ventanas", "mamparas", "espejos", "doble-acristalamiento", "emergencia"],
+        "reformas": ["integral", "cocina", "baño", "parcial", "vivienda", "local", "presupuesto"],
+        "mudanzas": ["nacional", "internacional", "embalaje", "pianos", "oficinas", "guardamuebles", "presupuesto"],
+        "limpieza": ["hogar", "oficinas", "comunidades", "fin-obra", "cristales", "presupuesto"],
+        "jardinero": ["poda", "diseño", "mantenimiento", "cesped", "riego", "presupuesto"],
+        "aire-acondicionado": ["instalacion", "reparacion", "mantenimiento", "recarga-gas", "limpieza", "presupuesto"],
+        "albañil": ["obras", "reformas", "fachadas", "tabiques", "solados", "presupuesto"],
+        "tecnico-climatizacion": ["instalacion", "reparacion", "mantenimiento", "calderas", "aerotermia", "presupuesto"],
+        "instalador-gas": ["calderas", "calentadores", "certificados", "revision", "instalacion", "presupuesto"],
+        "tapicero": ["sofas", "sillas", "cortinas", "cabeceros", "restauracion", "presupuesto"],
+    },
+    "en": {
+        "locksmith": ["emergency", "24-hour", "24h", "car-keys", "lock-change", "lock-repair", "rekey"],
+        "plumber": ["emergency", "24-hour", "drain-cleaning", "leak-repair", "water-heater", "pipe-repair"],
+        "electrician": ["emergency", "24-hour", "installation", "repair", "panel-upgrade", "outlets", "lighting"],
+        "painter": ["interior", "exterior", "cabinet-painting", "deck-staining", "estimate"],
+        "carpenter": ["cabinets", "doors", "windows", "framing", "decks", "furniture", "estimate"],
+        "glazier": ["emergency", "window-repair", "shower-doors", "mirrors", "glass-replacement"],
+        "remodeling": ["kitchen", "bathroom", "basement", "full-house", "additions", "estimate"],
+        "moving": ["local", "long-distance", "packing", "piano", "office", "storage", "estimate"],
+        "cleaning": ["house", "office", "post-construction", "deep-cleaning", "windows", "estimate"],
+        "gardener": ["lawn-care", "landscaping", "tree-trimming", "irrigation", "design", "estimate"],
+        "hvac": ["installation", "repair", "maintenance", "ac-repair", "heating-repair", "estimate"],
+        "handyman": ["repairs", "installation", "assembly", "drywall", "painting", "estimate"],
+        "roofer": ["repair", "replacement", "inspection", "gutters", "shingles", "estimate"],
+        "mason": ["brickwork", "stonework", "chimneys", "patios", "walls", "estimate"],
+        "pest-control": ["termites", "rodents", "bed-bugs", "ants", "mosquitoes", "estimate"],
+    }
+}
+
+def extract_subservices_from_urls(urls, service_key, lang="es"):
+    """Detecta subservicios del sitemap del usuario"""
+    subservices = []
+    patterns = SUBSERVICE_PATTERNS.get(lang, {}).get(service_key, [])
+    
+    for url in urls:
+        if not url or not isinstance(url, str):
+            continue
+        
+        url_lower = url.lower()
+        
+        # Buscar patrones de subservicios
+        for pattern in patterns:
+            if pattern in url_lower:
+                # Extraer título del slug
+                path = urlparse(url).path
+                slug = path.strip('/').split('/')[-1]
+                
+                # Crear entrada de subservicio
+                subservices.append({
+                    'name': slug.replace('-', ' ').title(),
+                    'url': url,
+                    'pattern': pattern
+                })
+                break
+    
+    # Eliminar duplicados por URL
+    seen = set()
+    unique_subservices = []
+    for sub in subservices:
+        if sub['url'] not in seen:
+            seen.add(sub['url'])
+            unique_subservices.append(sub)
+    
+    return unique_subservices
+
+# ============================================
+# HTML TEMPLATE SYSTEM
+# ============================================
+
+def get_base_template(lang="es"):
+    """Retorna plantilla HTML base responsive para cualquier servicio"""
+    
+    if lang == "es":
+        template = """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{SERVICIO_DISPLAY} en {ZONA_DISPLAY} - Servicio profesional {HORA_SERVICIO}. Presupuesto sin compromiso. Llamar ahora.">
+    <title>{SERVICIO_DISPLAY} en {ZONA_DISPLAY} | Servicio Profesional {HORA_SERVICIO}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 60px 0; text-align: center; }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        .subtitle { font-size: 1.2rem; opacity: 0.9; }
+        .cta-button { display: inline-block; background: #ff6b6b; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
+        .cta-button:hover { transform: scale(1.05); }
+        section { padding: 60px 0; }
+        h2 { font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .card h3 { color: #667eea; margin-bottom: 15px; }
+        .zones-list, .services-list { list-style: none; margin-top: 20px; }
+        .zones-list li, .services-list li { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .zones-list a, .services-list a { color: #667eea; text-decoration: none; font-weight: 500; }
+        .zones-list a:hover, .services-list a:hover { text-decoration: underline; }
+        .faq { background: #f8f9fa; }
+        .faq-item { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }
+        .faq-item h3 { font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }
+        footer { background: #2c3e50; color: white; text-align: center; padding: 40px 0; }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>{SERVICIO_DISPLAY} en {ZONA_DISPLAY}</h1>
+            <p class="subtitle">Servicio profesional de {SERVICIO} en {ZONA_DISPLAY} {HORA_SERVICIO}</p>
+            <a href="tel:{TELEFONO}" class="cta-button">☎ Llamar Ahora</a>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2>Tu {SERVICIO_DISPLAY} de confianza en {ZONA_DISPLAY}</h2>
+            <p>Ofrecemos servicios profesionales de {SERVICIO} en {ZONA_DISPLAY} con años de experiencia. Nuestro equipo está cualificado para resolver cualquier problema relacionado con {SERVICIO_DESCRIPCION}.</p>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>✓ Profesionales Cualificados</h3>
+                    <p>Equipo con años de experiencia en {SERVICIO}</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Presupuesto Sin Compromiso</h3>
+                    <p>Valoración gratuita antes de iniciar el trabajo</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Garantía de Servicio</h3>
+                    <p>Todos nuestros trabajos están garantizados</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="services-section">
+        <div class="container">
+            <h2>Nuestros Servicios de {SERVICIO_DISPLAY}</h2>
+            {ENLACES_SUBSERVICIOS}
+        </div>
+    </section>
+
+    <section>
+        <div class="container">
+            <h2>También atendemos en zonas cercanas a {ZONA_DISPLAY}</h2>
+            {ENLACES_ZONAS}
+        </div>
+    </section>
+
+    <section class="faq">
+        <div class="container">
+            <h2>Preguntas Frecuentes</h2>
+            {FAQ_CONTENT}
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 {SERVICIO_DISPLAY} {ZONA_DISPLAY}. Todos los derechos reservados.</p>
+            <p>Servicio profesional de {SERVICIO} en {ZONA_DISPLAY} y alrededores</p>
+        </div>
+    </footer>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "{SERVICIO_DISPLAY} {ZONA_DISPLAY}",
+        "description": "Servicio profesional de {SERVICIO} en {ZONA_DISPLAY}",
+        "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "{ZONA_DISPLAY}",
+            "addressCountry": "ES"
+        },
+        "telephone": "{TELEFONO}",
+        "areaServed": "{ZONA_DISPLAY}"
+    }
+    </script>
+</body>
+</html>
+"""
+    else:  # English
+        template = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{SERVICIO_DISPLAY} in {ZONA_DISPLAY} - Professional {HORA_SERVICIO} service. Free estimates. Call now.">
+    <title>{SERVICIO_DISPLAY} in {ZONA_DISPLAY} | Professional {HORA_SERVICIO} Service</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 60px 0; text-align: center; }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        .subtitle { font-size: 1.2rem; opacity: 0.9; }
+        .cta-button { display: inline-block; background: #ff6b6b; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
+        .cta-button:hover { transform: scale(1.05); }
+        section { padding: 60px 0; }
+        h2 { font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .card h3 { color: #667eea; margin-bottom: 15px; }
+        .zones-list, .services-list { list-style: none; margin-top: 20px; }
+        .zones-list li, .services-list li { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .zones-list a, .services-list a { color: #667eea; text-decoration: none; font-weight: 500; }
+        .zones-list a:hover, .services-list a:hover { text-decoration: underline; }
+        .faq { background: #f8f9fa; }
+        .faq-item { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }
+        .faq-item h3 { font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }
+        footer { background: #2c3e50; color: white; text-align: center; padding: 40px 0; }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>{SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h1>
+            <p class="subtitle">Professional {SERVICIO} service in {ZONA_DISPLAY} {HORA_SERVICIO}</p>
+            <a href="tel:{TELEFONO}" class="cta-button">☎ Call Now</a>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2>Your Trusted {SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h2>
+            <p>We offer professional {SERVICIO} services in {ZONA_DISPLAY} with years of experience. Our qualified team can solve any problem related to {SERVICIO_DESCRIPCION}.</p>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>✓ Qualified Professionals</h3>
+                    <p>Team with years of experience in {SERVICIO}</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Free Estimates</h3>
+                    <p>Free assessment before starting work</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Service Guarantee</h3>
+                    <p>All our work is guaranteed</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="services-section">
+        <div class="container">
+            <h2>Our {SERVICIO_DISPLAY} Services</h2>
+            {ENLACES_SUBSERVICIOS}
+        </div>
+    </section>
+
+    <section>
+        <div class="container">
+            <h2>We also serve areas near {ZONA_DISPLAY}</h2>
+            {ENLACES_ZONAS}
+        </div>
+    </section>
+
+    <section class="faq">
+        <div class="container">
+            <h2>Frequently Asked Questions</h2>
+            {FAQ_CONTENT}
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 {SERVICIO_DISPLAY} {ZONA_DISPLAY}. All rights reserved.</p>
+            <p>Professional {SERVICIO} service in {ZONA_DISPLAY} and surrounding areas</p>
+        </div>
+    </footer>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "{SERVICIO_DISPLAY} {ZONA_DISPLAY}",
+        "description": "Professional {SERVICIO} service in {ZONA_DISPLAY}",
+        "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "{ZONA_DISPLAY}",
+            "addressCountry": "US"
+        },
+        "telephone": "{TELEFONO}",
+        "areaServed": "{ZONA_DISPLAY}"
+    }
+    </script>
+</body>
+</html>
+"""
+    
+    return template
+
+def get_service_description(service_key, lang="es"):
+    """Retorna descripción específica del servicio"""
+    descriptions = {
+        "es": {
+            "cerrajero": "apertura de puertas, cambio de cerraduras, copia de llaves y servicios de emergencia",
+            "fontanero": "reparación de fugas, desatascos, instalación de calderas y servicios de fontanería",
+            "electricista": "instalaciones eléctricas, reparaciones, certificados y servicios eléctricos",
+            "pintor": "pintura interior y exterior, lacado, restauración y acabados profesionales",
+            "carpintero": "fabricación e instalación de muebles, puertas, ventanas y trabajos en madera",
+            "cristalero": "instalación y reparación de cristales, ventanas, mamparas y espejos",
+            "reformas": "reformas integrales, cocinas, baños y remodelaciones completas",
+            "mudanzas": "mudanzas locales, nacionales, embalaje y almacenamiento",
+            "limpieza": "limpieza de hogares, oficinas, comunidades y servicios de limpieza profesional",
+            "jardinero": "diseño, mantenimiento de jardines, poda y servicios de jardinería",
+            "aire-acondicionado": "instalación, reparación y mantenimiento de sistemas de climatización",
+            "albañil": "obras de albañilería, reformas, fachadas y trabajos de construcción",
+            "tecnico-climatizacion": "instalación y mantenimiento de sistemas de calefacción y climatización",
+            "instalador-gas": "instalación de calderas, calentadores, certificados y revisiones de gas",
+            "tapicero": "tapizado de sofás, sillas, cortinas y restauración de muebles",
+        },
+        "en": {
+            "locksmith": "lock changes, key duplication, emergency lockout services and security solutions",
+            "plumber": "leak repairs, drain cleaning, water heater installation and plumbing services",
+            "electrician": "electrical installations, repairs, panel upgrades and electrical services",
+            "painter": "interior and exterior painting, cabinet refinishing and professional finishes",
+            "carpenter": "custom woodwork, cabinet installation, trim work and carpentry services",
+            "glazier": "window installation, glass repair, shower doors and glazing services",
+            "remodeling": "kitchen remodels, bathroom renovations and complete home renovations",
+            "moving": "local and long-distance moves, packing services and storage solutions",
+            "cleaning": "house cleaning, office cleaning, deep cleaning and professional cleaning services",
+            "gardener": "landscape design, lawn maintenance, tree care and gardening services",
+            "hvac": "AC installation, heating repair, maintenance and HVAC services",
+            "handyman": "home repairs, installations, assembly and handyman services",
+            "roofer": "roof repairs, replacements, inspections and roofing services",
+            "mason": "brickwork, stonework, concrete work and masonry services",
+            "pest-control": "pest inspections, treatments, prevention and pest control services",
+        }
+    }
+    
+    return descriptions.get(lang, {}).get(service_key, "servicios profesionales")
+
+def get_service_hora(service_key, lang="es"):
+    """Determina si el servicio es típicamente 24h o horario normal"""
+    emergency_services = ["cerrajero", "fontanero", "electricista", "cristalero", 
+                         "locksmith", "plumber", "electrician", "glazier"]
+    
+    if service_key in emergency_services:
+        return "24 horas" if lang == "es" else "24/7"
+    else:
+        return "" if lang == "es" else ""
+
+def get_faq_content(service_key, zone, lang="es"):
+    """Genera FAQs específicas por servicio"""
+    if lang == "es":
+        faqs = {
+            "cerrajero": [
+                ("¿Cuánto cuesta un cerrajero en {ZONA}?", "El precio varía según el tipo de servicio. Ofrecemos presupuesto sin compromiso antes de realizar cualquier trabajo."),
+                ("¿Tienen servicio de cerrajero 24 horas en {ZONA}?", "Sí, ofrecemos servicio de emergencia las 24 horas del día, los 7 días de la semana en {ZONA}."),
+                ("¿Cuánto tardan en llegar?", "Nuestro tiempo de respuesta en {ZONA} es generalmente de 20-30 minutos dependiendo de la zona específica."),
+            ],
+            "fontanero": [
+                ("¿Cuánto cuesta un fontanero en {ZONA}?", "El coste depende del tipo de reparación. Realizamos presupuestos gratuitos sin compromiso."),
+                ("¿Atienden emergencias de fontanería?", "Sí, disponemos de servicio de urgencias 24h para fugas y averías graves en {ZONA}."),
+                ("¿Qué servicios de fontanería ofrecen?", "Reparación de fugas, desatascos, instalación de calderas y todo tipo de servicios de fontanería."),
+            ],
+        }
+    else:
+        faqs = {
+            "locksmith": [
+                ("How much does a locksmith cost in {ZONA}?", "Pricing varies by service type. We provide free estimates before starting any work."),
+                ("Do you have 24-hour locksmith service in {ZONA}?", "Yes, we offer 24/7 emergency locksmith services in {ZONA}."),
+                ("How quickly can you arrive?", "Our typical response time in {ZONA} is 20-30 minutes depending on your exact location."),
+            ],
+            "plumber": [
+                ("How much does a plumber cost in {ZONA}?", "Cost depends on the repair needed. We provide free estimates with no obligation."),
+                ("Do you handle plumbing emergencies?", "Yes, we have 24-hour emergency service for leaks and serious issues in {ZONA}."),
+                ("What plumbing services do you offer?", "Leak repairs, drain cleaning, water heater installation and all plumbing services."),
+            ],
+        }
+    
+    # FAQs genéricas si no hay específicas
+    default_faqs = [
+        ("¿Por qué elegirnos?" if lang == "es" else "Why choose us?", 
+         "Somos profesionales con años de experiencia en {ZONA}." if lang == "es" else "We are professionals with years of experience in {ZONA}."),
+        ("¿Ofrecen garantía?" if lang == "es" else "Do you offer warranty?", 
+         "Sí, todos nuestros trabajos tienen garantía." if lang == "es" else "Yes, all our work is guaranteed."),
+    ]
+    
+    service_faqs = faqs.get(service_key, default_faqs)
+    
+    html = ""
+    for question, answer in service_faqs:
+        q = question.replace("{ZONA}", zone.title())
+        a = answer.replace("{ZONA}", zone.title())
+        html += f'<div class="faq-item"><h3>{q}</h3><p>{a}</p></div>\n'
+    
+    return html
+
+def render_template(service_key, zone, user_zones, subservices, lang="es", telefono="+34900000000"):
+    """Renderiza plantilla HTML con datos reales"""
+    template = get_base_template(lang)
+    
+    # Datos básicos
+    service_display = SERVICES.get(lang, {}).get(service_key, service_key).title()
+    zona_display = zone.replace('-', ' ').title()
+    servicio_descripcion = get_service_description(service_key, lang)
+    hora_servicio = get_service_hora(service_key, lang)
+    
+    # Enlaces a zonas cercanas
+    enlaces_zonas_html = '<ul class="zones-list">\n'
+    for z in sorted(user_zones)[:10]:  # Máximo 10 zonas
+        if z != zone:  # No enlazar a sí misma
+            z_display = z.replace('-', ' ').title()
+            enlaces_zonas_html += f'    <li><a href="/{service_key}-{z}/">{service_display} en {z_display}</a></li>\n'
+    enlaces_zonas_html += '</ul>'
+    
+    # Enlaces a subservicios
+    if subservices:
+        enlaces_sub_html = '<ul class="services-list">\n'
+        for sub in subservices[:8]:  # Máximo 8 subservicios
+            enlaces_sub_html += f'    <li><a href="{sub["url"]}">{sub["name"]}</a></li>\n'
+        enlaces_sub_html += '</ul>'
+    else:
+        enlaces_sub_html = '<p>' + ('Consulta todos nuestros servicios especializados.' if lang == 'es' else 'Check out all our specialized services.') + '</p>'
+    
+    # FAQ
+    faq_html = get_faq_content(service_key, zona_display, lang)
+    
+    # Reemplazar placeholders
+    html = template.replace('{SERVICIO}', service_key)
+    html = html.replace('{SERVICIO_DISPLAY}', service_display)
+    html = html.replace('{ZONA}', zone)
+    html = html.replace('{ZONA_DISPLAY}', zona_display)
+    html = html.replace('{SERVICIO_DESCRIPCION}', servicio_descripcion)
+    html = html.replace('{HORA_SERVICIO}', hora_servicio)
+    html = html.replace('{TELEFONO}', telefono)
+    html = html.replace('{ENLACES_ZONAS}', enlaces_zonas_html)
+    html = html.replace('{ENLACES_SUBSERVICIOS}', enlaces_sub_html)
+    html = html.replace('{FAQ_CONTENT}', faq_html)
+    
+    return html
+
+# ============================================
+# STREAMLIT UI
+# ============================================
+
+st.set_page_config(
+    page_title="Local SEO Geo-Gap Analyzer",
+    page_icon="🎯",
+    layout="wide"
+)
+
+if 'lang' not in st.session_state:
+    st.session_state.lang = 'es'
+
+if 'analysis_done' not in st.session_state:
+    st.session_state.analysis_done = False
+
+if 'gaps_data' not in st.session_state:
+    st.session_state.gaps_data = []
+
+if 'api_enabled' not in st.session_state:
+    st.session_state.api_enabled = False
+
+if 'show_extra_competitors' not in st.session_state:
+    st.session_state.show_extra_competitors = False
+
+if 'user_domain_history' not in st.session_state:
+    st.session_state.user_domain_history = []
+
+if 'competitor_domain_history' not in st.session_state:
+    st.session_state.competitor_domain_history = []
+
+if 'selected_service' not in st.session_state:
+    st.session_state.selected_service = None
+
+st.title(get_text('title', st.session_state.lang))
+
+with st.sidebar:
+    st.subheader(get_text('language', st.session_state.lang))
+    lang_option = st.radio(
+        "Language selector",
+        options=['🇪🇸 Español', '🇬🇧 English'],
+        index=0 if st.session_state.lang == 'es' else 1,
+        label_visibility='collapsed'
+    )
+    
+    new_lang = 'es' if '🇪🇸' in lang_option else 'en'
+    if new_lang != st.session_state.lang:
+        st.session_state.lang = new_lang
+        st.session_state.analysis_done = False
+        st.rerun()
+    
+    st.divider()
+    
+    st.subheader(get_text('api_optional', st.session_state.lang))
+    
+    api_enabled = st.checkbox(
+        get_text('enable_api', st.session_state.lang),
+        value=st.session_state.api_enabled
+    )
+    
+    if api_enabled:
+        api_provider = st.selectbox(
+            get_text('api_provider', st.session_state.lang),
+            options=["SE Ranking", "Semrush", "Ahrefs"],
+            index=0
+        )
+        
+        api_key = st.text_input(
+            get_text('api_key', st.session_state.lang),
+            type="password",
+            placeholder=get_text('api_key_placeholder', st.session_state.lang)
+        )
+        
+        country_code = st.selectbox(
+            get_text('country_code', st.session_state.lang),
+            options=["es", "us", "uk", "fr", "de", "it"],
+            index=0
+        )
+        
+        st.session_state.api_enabled = True
+        st.session_state.api_provider = api_provider
+        st.session_state.api_key = api_key
+        st.session_state.country_code = country_code
+        
+        if api_key:
+            st.caption("✅ " + get_text('using_cache', st.session_state.lang))
+    else:
+        st.session_state.api_enabled = False
+
+lang = st.session_state.lang
+
+st.header("⚙️ " + ("Configuración" if lang == "es" else "Configuration"))
+
+services_dict = get_services(lang)
+service_label = get_text('service', lang)
+selected_service_display = st.selectbox(
+    service_label,
+    options=list(services_dict.values()),
+    index=0
+)
+selected_service = [k for k, v in services_dict.items() if v == selected_service_display][0]
+st.session_state.selected_service = selected_service
+
+st.divider()
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Obtener historial de dominios de usuario
+    user_history = get_domain_history('user')
+    
+    if user_history:
+        domain_options = [get_text('new_domain', lang)] + user_history
+        selected_user_domain = st.selectbox(
+            f"🏠 {get_text('your_domain', lang)} *",
+            options=domain_options,
+            index=0,
+            key='user_domain_select'
+        )
+        
+        if selected_user_domain == get_text('new_domain', lang):
+            user_domain_input = st.text_input(
+                get_text('your_domain', lang),
+                placeholder=get_text('domain_placeholder', lang),
+                help="Solo el dominio, sin https:// ni rutas",
+                label_visibility='collapsed',
+                key='user_domain_manual'
+            )
+        else:
+            user_domain_input = selected_user_domain
+            st.caption(f"✅ {selected_user_domain}")
+    else:
+        user_domain_input = st.text_input(
+            f"🏠 {get_text('your_domain', lang)} *",
+            placeholder=get_text('domain_placeholder', lang),
+            help="Solo el dominio, sin https:// ni rutas"
+        )
+    
+    user_sitemap_input = st.text_input(
+        f"📄 Sitemap URL (opcional)",
+        placeholder="https://tudominio.com/sitemap.xml",
+        help="Si tu sitemap no se detecta automáticamente, pégalo aquí"
+    )
+
+with col2:
+    if user_domain_input:
+        normalized = normalize_domain(user_domain_input)
+        if normalized:
+            st.success(f"✅ {normalized}")
+        else:
+            st.error(get_text('invalid_domain', lang))
+    
+    # Botón para limpiar historial
+    if user_history or get_domain_history('competitor'):
+        if st.button(get_text('clear_history', lang), key='clear_history_btn'):
+            clear_domain_history()
+            st.success(get_text('history_cleared', lang))
+            st.rerun()
+
+st.divider()
+
+st.subheader(f"🔍 {get_text('competitors_required', lang)}")
+
+# Obtener historial de competidores
+comp_history = get_domain_history('competitor')
+
+col1, col2 = st.columns(2)
+with col1:
+    # Competidor 1
+    if comp_history:
+        comp1_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp1 = st.selectbox(
+            f"{get_text('competitor', lang)} 1 *",
+            options=comp1_options,
+            index=0,
+            key='comp1_select'
+        )
+        
+        if selected_comp1 == get_text('new_domain', lang):
+            comp1_input = st.text_input(
+                get_text('competitor', lang) + " 1",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp1_manual'
+            )
+        else:
+            comp1_input = selected_comp1
+            st.caption(f"✅ {selected_comp1}")
+    else:
+        comp1_input = st.text_input(
+            f"{get_text('competitor', lang)} 1 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
+    
+    # Competidor 2
+    if comp_history:
+        comp2_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp2 = st.selectbox(
+            f"{get_text('competitor', lang)} 2 *",
+            options=comp2_options,
+            index=0,
+            key='comp2_select'
+        )
+        
+        if selected_comp2 == get_text('new_domain', lang):
+            comp2_input = st.text_input(
+                get_text('competitor', lang) + " 2",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp2_manual'
+            )
+        else:
+            comp2_input = selected_comp2
+            st.caption(f"✅ {selected_comp2}")
+    else:
+        comp2_input = st.text_input(
+            f"{get_text('competitor', lang)} 2 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
+
+with col2:
+    # Competidor 3
+    if comp_history:
+        comp3_options = [get_text('new_domain', lang)] + comp_history
+        selected_comp3 = st.selectbox(
+            f"{get_text('competitor', lang)} 3 *",
+            options=comp3_options,
+            index=0,
+            key='comp3_select'
+        )
+        
+        if selected_comp3 == get_text('new_domain', lang):
+            comp3_input = st.text_input(
+                get_text('competitor', lang) + " 3",
+                placeholder=get_text('domain_placeholder', lang),
+                label_visibility='collapsed',
+                key='comp3_manual'
+            )
+        else:
+            comp3_input = selected_comp3
+            st.caption(f"✅ {selected_comp3}")
+    else:
+        comp3_input = st.text_input(
+            f"{get_text('competitor', lang)} 3 *",
+            placeholder=get_text('domain_placeholder', lang)
+        )
+    
+    valid_required = sum([
+        bool(normalize_domain(comp1_input)),
+        bool(normalize_domain(comp2_input)),
+        bool(normalize_domain(comp3_input))
+    ])
+    
+    if valid_required < 3:
+        st.warning(f"⚠️ {valid_required}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
+    else:
+        st.success(f"✅ {valid_required}/3 " + ("competidores válidos" if lang == "es" else "valid competitors"))
+
+with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session_state.show_extra_competitors):
+    st.caption(("Agregar más competidores mejora la precisión del análisis" if lang == "es" else "Adding more competitors improves analysis accuracy"))
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Competidores 4-7 con autocompletado
+        if comp_history:
+            comp4_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp4 = st.selectbox(f"{get_text('competitor', lang)} 4", options=comp4_options, index=0, key="comp4_select")
+            comp4_input = st.text_input("Comp 4", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp4_manual") if selected_comp4 == get_text('new_domain', lang) else selected_comp4
+            if selected_comp4 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp4}")
+        else:
+            comp4_input = st.text_input(f"{get_text('competitor', lang)} 4", placeholder=get_text('domain_placeholder', lang), key="comp4")
+        
+        if comp_history:
+            comp5_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp5 = st.selectbox(f"{get_text('competitor', lang)} 5", options=comp5_options, index=0, key="comp5_select")
+            comp5_input = st.text_input("Comp 5", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp5_manual") if selected_comp5 == get_text('new_domain', lang) else selected_comp5
+            if selected_comp5 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp5}")
+        else:
+            comp5_input = st.text_input(f"{get_text('competitor', lang)} 5", placeholder=get_text('domain_placeholder', lang), key="comp5")
+        
+        if comp_history:
+            comp6_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp6 = st.selectbox(f"{get_text('competitor', lang)} 6", options=comp6_options, index=0, key="comp6_select")
+            comp6_input = st.text_input("Comp 6", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp6_manual") if selected_comp6 == get_text('new_domain', lang) else selected_comp6
+            if selected_comp6 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp6}")
+        else:
+            comp6_input = st.text_input(f"{get_text('competitor', lang)} 6", placeholder=get_text('domain_placeholder', lang), key="comp6")
+        
+        if comp_history:
+            comp7_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp7 = st.selectbox(f"{get_text('competitor', lang)} 7", options=comp7_options, index=0, key="comp7_select")
+            comp7_input = st.text_input("Comp 7", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp7_manual") if selected_comp7 == get_text('new_domain', lang) else selected_comp7
+            if selected_comp7 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp7}")
+        else:
+            comp7_input = st.text_input(f"{get_text('competitor', lang)} 7", placeholder=get_text('domain_placeholder', lang), key="comp7")
+    
+    with col2:
+        # Competidores 8-10 con autocompletado
+        if comp_history:
+            comp8_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp8 = st.selectbox(f"{get_text('competitor', lang)} 8", options=comp8_options, index=0, key="comp8_select")
+            comp8_input = st.text_input("Comp 8", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp8_manual") if selected_comp8 == get_text('new_domain', lang) else selected_comp8
+            if selected_comp8 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp8}")
+        else:
+            comp8_input = st.text_input(f"{get_text('competitor', lang)} 8", placeholder=get_text('domain_placeholder', lang), key="comp8")
+        
+        if comp_history:
+            comp9_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp9 = st.selectbox(f"{get_text('competitor', lang)} 9", options=comp9_options, index=0, key="comp9_select")
+            comp9_input = st.text_input("Comp 9", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp9_manual") if selected_comp9 == get_text('new_domain', lang) else selected_comp9
+            if selected_comp9 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp9}")
+        else:
+            comp9_input = st.text_input(f"{get_text('competitor', lang)} 9", placeholder=get_text('domain_placeholder', lang), key="comp9")
+        
+        if comp_history:
+            comp10_options = [get_text('new_domain', lang)] + comp_history
+            selected_comp10 = st.selectbox(f"{get_text('competitor', lang)} 10", options=comp10_options, index=0, key="comp10_select")
+            comp10_input = st.text_input("Comp 10", placeholder=get_text('domain_placeholder', lang), label_visibility='collapsed', key="comp10_manual") if selected_comp10 == get_text('new_domain', lang) else selected_comp10
+            if selected_comp10 != get_text('new_domain', lang):
+                st.caption(f"✅ {selected_comp10}")
+        else:
+            comp10_input = st.text_input(f"{get_text('competitor', lang)} 10", placeholder=get_text('domain_placeholder', lang), key="comp10")
+        
+        optional_comps = [comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
+        valid_optional = sum([bool(normalize_domain(c)) for c in optional_comps if c])
+        
+        if valid_optional > 0:
+            st.info(f"✨ +{valid_optional} " + ("competidores adicionales" if lang == "es" else "additional competitors"))
+
+st.divider()
+
+all_competitor_inputs = [comp1_input, comp2_input, comp3_input, comp4_input, comp5_input, comp6_input, comp7_input, comp8_input, comp9_input, comp10_input]
+total_valid = sum([bool(normalize_domain(c)) for c in all_competitor_inputs if c])
+
+if total_valid >= 3:
+    st.success(f"🎯 {get_text('total_competitors', lang)}: **{total_valid}**")
+
+analyze_button = st.button(
+    get_text('analyze_button', lang),
+    type="primary",
+    use_container_width=True,
+    disabled=valid_required < 3 or not user_domain_input
+)
+
+if analyze_button:
+    st.session_state.analysis_done = False
+    st.session_state.gaps_data = []
+    
+    competitor_domains = []
+    for comp_input in all_competitor_inputs:
+        if comp_input:
+            norm = normalize_domain(comp_input)
+            if norm:
+                competitor_domains.append(comp_input)
+    
+    success, normalized_domains, error_msg = validate_domains_multiple(
+        user_domain_input, competitor_domains, lang
+    )
+    
+    if not success:
+        st.error(error_msg)
+        st.stop()
+    
+    st.subheader("🔍 " + get_text('extracting_urls', lang))
+    
+    if user_sitemap_input and user_sitemap_input.strip():
+        sitemap_results = {
+            'user': {
+                'sitemap_url': user_sitemap_input.strip(),
+                'method': 'manual',
+                'success': True,
+                'message': '✅ Manual'
+            }
+        }
+    else:
+        sitemap_results = {'user': find_sitemap(normalized_domains['user'])}
+    
+    comp_domains_dict = {k: v for k, v in normalized_domains.items() if k.startswith('comp')}
+    with st.spinner(''):
+        comp_sitemaps = find_all_sitemaps(comp_domains_dict)
+    
+    sitemap_results.update(comp_sitemaps)
+    
+    for key, result in sitemap_results.items():
+        domain = normalized_domains[key]
+        
+        if key == 'user':
+            label = get_text('your_domain', lang)
+        else:
+            comp_num = key.replace('comp', '')
+            label = f"{get_text('competitor', lang)} {comp_num}"
+        
+        if result['success']:
+            st.success(f"{label}: **{domain}** → {result['message']}")
+        else:
+            st.warning(f"{label}: **{domain}** → {result['message']}")
+    
+    st.divider()
+    
+    st.subheader("🏠 " + get_text('home_zone_detected', lang))
+    
+    with st.spinner(''):
+        home_zone_result = detect_home_zone(
+            normalized_domains['user'],
+            selected_service,
+            lang
+        )
+    
+    if home_zone_result['zone']:
+        home_zone = home_zone_result['zone']
+        st.success(f"✅ {get_text('home_zone_detected', lang)}: **{home_zone.title()}**")
+    else:
+        cities = get_cities(lang)
+        home_zone = st.selectbox(
+            get_text('select_city', lang),
+            options=cities,
+            index=0
+        )
+        st.info(f"ℹ️ Zona seleccionada manualmente: **{home_zone.title()}**")
+    
+    st.subheader("📊 " + get_text('processing', lang))
+    
+    all_urls = {}
+    all_counts = {}
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    timer_placeholder = st.empty()
+    start_time = time.time()
+    
+    total_domains = len(sitemap_results)
+    
+    for idx, (key, result) in enumerate(sitemap_results.items()):
+        domain = normalized_domains[key]
+        
+        elapsed = int(time.time() - start_time)
+        timer_placeholder.caption(f"⏱️ Tiempo transcurrido: {elapsed}s")
+        
+        status_text.text(f"{get_text('processing', lang)}: {domain}")
+        
+        if result['success']:
+            urls, total = extract_urls_from_sitemap_cached(result['sitemap_url'])
+            all_urls[key] = urls
+            all_counts[key] = {'extracted': len(urls), 'total': total}
+        else:
+            all_urls[key] = []
+            all_counts[key] = {'extracted': 0, 'total': 0}
+        
+        progress_bar.progress((idx + 1) / total_domains)
+    
+    status_text.empty()
+    progress_bar.empty()
+    timer_placeholder.empty()
+    
+    cities = get_cities(lang)
+    stop_words = get_stop_words(lang)
+    
+    timer_placeholder = st.empty()
+    start_time = time.time()
+    
+    all_zones_data = {}
+    for key, urls in all_urls.items():
+        elapsed = int(time.time() - start_time)
+        timer_placeholder.caption(f"⏱️ {get_text('processing', lang)}: {elapsed}s")
+        
+        filtered = filter_urls(urls, lang)
+        zones_data = []
+        
+        for url in filtered:
+            zone, confidence = extract_zone_from_url(url, cities, selected_service, stop_words, lang)
+            if zone:
+                zones_data.append((zone, confidence, url))
+        
+        all_zones_data[key] = zones_data
+    
+    timer_placeholder.empty()
+    
+    comp_zones_list = [all_zones_data[k] for k in all_zones_data.keys() if k.startswith('comp')]
+    
+    analysis = analyze_comprehensive(
+        all_zones_data['user'],
+        comp_zones_list,
+        home_zone
+    )
+    
+    gaps_data = []
+    
+    if st.session_state.api_enabled and st.session_state.api_key:
+        st.info(f"📊 {get_text('fetching_metrics', lang)}")
+        api_progress = st.progress(0)
+        
+        for idx, gap in enumerate(sorted(analysis['gaps'])):
+            comp_count = sum([
+                1 for comp_data in comp_zones_list
+                if any(z == gap for z, _, _ in comp_data)
+            ])
+            
+            confidences = []
+            for comp_data in comp_zones_list:
+                for z, conf, _ in comp_data:
+                    if z == gap and conf:
+                        confidences.append(conf['score'])
+            
+            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+            
+            if avg_conf >= 67:
+                slug_data = suggest_best_slug(
+                    gap, 
+                    selected_service, 
+                    comp_zones_list,
+                    lang
+                )
+                
+                keyword = build_keyword_from_gap(selected_service, gap, lang)
+                api_data = fetch_api_data(
+                    keyword,
+                    st.session_state.api_provider,
+                    st.session_state.api_key,
+                    st.session_state.country_code
+                )
+                
+                volume = api_data.get('volume', 0) if api_data else 0
+                kd = api_data.get('kd', 0) if api_data else 0
+                
+                score = calculate_gap_score(comp_count, volume, has_api=True)
+                priority_info = get_priority_from_score(score, lang)
+                
+                url_keywords_data = None
+                if slug_data['urls']:
+                    first_url = slug_data['urls'][0]
+                    url_keywords_data = fetch_url_keywords_api(
+                        first_url,
+                        st.session_state.api_provider,
+                        st.session_state.api_key,
+                        st.session_state.country_code
+                    )
+                
+                gap_row = {
+                    get_text('score', lang): score,
+                    get_text('priority', lang): f"{priority_info['badge']} {priority_info['label']}",
+                    get_text('zone', lang): gap.title(),
+                    get_text('slug', lang): slug_data['slug'],
+                    get_text('search_volume', lang): volume,
+                    get_text('keyword_difficulty', lang): kd,
+                    get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
+                    get_text('competitors_count', lang): comp_count,
+                    get_text('confidence', lang): f"{avg_conf}%",
+                    '_score': score,
+                    '_priority_raw': priority_info['label'],
+                    '_comp_count_raw': comp_count,
+                    '_zone_raw': gap.lower()
+                }
+                
+                if url_keywords_data:
+                    gap_row[get_text('traffic', lang)] = url_keywords_data.get('traffic', 0)
+                    gap_row[get_text('keywords_ranking', lang)] = url_keywords_data.get('keywords', '')
+                
+                gaps_data.append(gap_row)
+            
+            api_progress.progress((idx + 1) / len(analysis['gaps']))
+        
+        api_progress.empty()
+    else:
+        for gap in sorted(analysis['gaps']):
+            comp_count = sum([
+                1 for comp_data in comp_zones_list
+                if any(z == gap for z, _, _ in comp_data)
+            ])
+            
+            confidences = []
+            for comp_data in comp_zones_list:
+                for z, conf, _ in comp_data:
+                    if z == gap and conf:
+                        confidences.append(conf['score'])
+            
+            avg_conf = int(sum(confidences) / len(confidences)) if confidences else 0
+            
+            slug_data = suggest_best_slug(
+                gap, 
+                selected_service, 
+                comp_zones_list,
+                lang
+            )
+            
+            if avg_conf >= 67:
+                score = calculate_gap_score(comp_count, 0, has_api=False)
+                priority_info = get_priority_from_score(score, lang)
+                
+                gap_row = {
+                    get_text('score', lang): score,
+                    get_text('priority', lang): f"{priority_info['badge']} {priority_info['label']}",
+                    get_text('zone', lang): gap.title(),
+                    get_text('slug', lang): slug_data['slug'],
+                    get_text('competitor_urls', lang): "\n".join(slug_data['urls']),
+                    get_text('competitors_count', lang): comp_count,
+                    get_text('confidence', lang): f"{avg_conf}%",
+                    '_score': score,
+                    '_priority_raw': priority_info['label'],
+                    '_comp_count_raw': comp_count,
+                    '_zone_raw': gap.lower()
+                }
+                
+                gaps_data.append(gap_row)
+    
+    gaps_data = sorted(gaps_data, key=lambda x: x.get('_score', 0), reverse=True)
+    
+    st.session_state.gaps_data = gaps_data
+    st.session_state.analysis = analysis
+    st.session_state.all_zones_data = all_zones_data
+    st.session_state.all_urls = all_urls
+    st.session_state.analysis_done = True
+    st.session_state.home_zone = home_zone
+    st.session_state.total_competitors = total_valid
+    
+    st.rerun()
+
+if st.session_state.analysis_done:
+    analysis = st.session_state.analysis
+    gaps_data = st.session_state.gaps_data
+    all_zones_data = st.session_state.all_zones_data
+    all_urls = st.session_state.get('all_urls', {})
+    home_zone = st.session_state.home_zone
+    
+    st.divider()
+    
+    st.subheader("📊 " + ("Resumen del Análisis" if lang == "es" else "Analysis Summary"))
+    
+    st.caption(f"🎯 {get_text('total_competitors', lang)}: **{st.session_state.total_competitors}**")
+    
+    critical_priority = sum([1 for g in gaps_data if g.get('_score', 0) >= 90])
+    high_priority = sum([1 for g in gaps_data if 70 <= g.get('_score', 0) < 90])
+    medium_priority = sum([1 for g in gaps_data if 40 <= g.get('_score', 0) < 70])
+    low_priority = sum([1 for g in gaps_data if g.get('_score', 0) < 40])
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="🎯 Total Gaps",
+            value=len(gaps_data),
+            delta=None
+        )
+    
+    with col2:
+        st.metric(
+            label="💪 " + get_text('strengths_found', lang),
+            value=len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2']),
+            delta=None
+        )
+    
+    with col3:
+        st.metric(
+            label="🏠 " + get_text('home_zone_detected', lang),
+            value=home_zone.title(),
+            delta=None
+        )
+    
+    with col4:
+        st.metric(
+            label="⚖️ " + get_text('ties_found', lang),
+            value=len(analysis['ties']),
+            delta=None
+        )
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="🔴🔴 " + get_text('critical_priority', lang),
+            value=f"{critical_priority} gaps",
+            delta=None,
+            help="Score 90-100"
+        )
+    
+    with col2:
+        st.metric(
+            label="🔴 " + get_text('high_priority', lang),
+            value=f"{high_priority} gaps",
+            delta=None,
+            help="Score 70-89"
+        )
+    
+    with col3:
+        st.metric(
+            label="🟡 " + get_text('medium_priority', lang),
+            value=f"{medium_priority} gaps",
+            delta=None,
+            help="Score 40-69"
+        )
+    
+    with col4:
+        st.metric(
+            label="🟢 " + get_text('low_priority', lang),
+            value=f"{low_priority} gaps",
+            delta=None,
+            help="Score 0-39"
+        )
+    
+    st.divider()
+    
+    tab1, tab2, tab3 = st.tabs([
+        f"🎯 {get_text('gaps_found', lang)} ({len(gaps_data)})",
+        f"💪 {get_text('strengths_found', lang)} ({len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2'])})",
+        f"📄 {get_text('generate_pages', lang)}"
+    ])
+    
+    with tab1:
+        st.subheader(get_text('gaps_found', lang))
+        
+        if gaps_data:
+            col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
+            
+            all_text = get_text('all', lang)
+            
+            with col_f1:
+                priority_options = [
+                    all_text,
+                    get_text('critical_priority', lang),
+                    get_text('high_priority', lang),
+                    get_text('medium_priority', lang),
+                    get_text('low_priority', lang)
+                ]
+                selected_priority = st.selectbox(
+                    get_text('filter_by_priority', lang),
+                    options=priority_options,
+                    index=0,
+                    key='filter_priority_select'
+                )
+            
+            with col_f2:
+                max_comps = max([g.get('_comp_count_raw', 0) for g in gaps_data]) if gaps_data else 3
+                comp_options = [all_text] + [str(i) for i in range(1, max_comps + 1)]
+                selected_comps = st.selectbox(
+                    get_text('filter_by_competitors', lang),
+                    options=comp_options,
+                    index=0,
+                    key='filter_comps_select'
+                )
+            
+            with col_f3:
+                search_query = st.text_input(
+                    get_text('search_zone', lang),
+                    placeholder="Madrid, Barcelona, Chamberí...",
+                    key='search_query_input'
+                )
+            
+            st.divider()
+            
+            filtered_gaps = gaps_data.copy()
+            
+            if selected_priority != all_text:
+                filtered_gaps = [g for g in filtered_gaps if g.get('_priority_raw') == selected_priority]
+            
+            if selected_comps != all_text:
+                filtered_gaps = [g for g in filtered_gaps if g.get('_comp_count_raw') == int(selected_comps)]
+            
+            if search_query:
+                search_lower = unidecode(search_query.lower())
+                filtered_gaps = [g for g in filtered_gaps if search_lower in g.get('_zone_raw', '')]
+            
+            if filtered_gaps:
+                display_gaps = []
+                for gap in filtered_gaps:
+                    display_gap = {k: v for k, v in gap.items() if not k.startswith('_')}
+                    display_gaps.append(display_gap)
+                
+                st.caption(f"{get_text('show_results', lang)}: **{len(display_gaps)}** {get_text('of', lang)} **{len(gaps_data)}** {get_text('results', lang)}")
+                
+                df_gaps = pd.DataFrame(display_gaps)
+                st.dataframe(df_gaps, use_container_width=True, hide_index=True)
+                
+                st.divider()
+                
+                csv_data = export_to_csv(display_gaps)
+                st.download_button(
+                    get_text('export_csv', lang),
+                    data=csv_data,
+                    file_name="gaps_analysis.csv",
+                    mime="text/csv",
+                    use_container_width=False
+                )
+            else:
+                st.info(f"ℹ️ {get_text('no_gaps_filter', lang)}")
+        else:
+            st.success("🎉 " + ("¡Ya cubres todas las zonas donde están tus competidores!" if lang == "es" else "You already cover all zones where your competitors are!"))
+    
+    with tab2:
+        st.subheader(get_text('strengths_found', lang))
+        
+        if analysis['strengths']['tier_1']:
+            st.markdown(f"### 🏆 {get_text('max_advantage', lang)}")
+            st.caption(("Zonas donde SOLO tú estás presente (0 competidores)" if lang == "es" else "Zones where ONLY you are present (0 competitors)"))
+            
+            tier1_data = []
+            for zone in sorted(analysis['strengths']['tier_1']):
+                tier1_data.append({
+                    get_text('zone', lang): zone.title(),
+                    get_text('advantage', lang): get_text('max_advantage', lang),
+                    get_text('strategy', lang): get_text('maintain_dominance', lang)
+                })
+            
+            df_tier1 = pd.DataFrame(tier1_data)
+            st.dataframe(df_tier1, use_container_width=True, hide_index=True)
+        
+        if analysis['strengths']['tier_2']:
+            st.markdown(f"### 💪 {get_text('medium_advantage', lang)}")
+            st.caption(("Zonas donde tú + 1 competidor" if lang == "es" else "Zones where you + 1 competitor"))
+            
+            tier2_data = []
+            for zone in sorted(analysis['strengths']['tier_2']):
+                tier2_data.append({
+                    get_text('zone', lang): zone.title(),
+                    get_text('advantage', lang): get_text('medium_advantage', lang),
+                    get_text('strategy', lang): get_text('early_advantage', lang)
+                })
+            
+            df_tier2 = pd.DataFrame(tier2_data)
+            st.dataframe(df_tier2, use_container_width=True, hide_index=True)
+        
+        if not analysis['strengths']['tier_1'] and not analysis['strengths']['tier_2']:
+            st.info("ℹ️ " + ("No tienes fortalezas únicas en este momento" if lang == "es" else "You don't have unique strengths at this time"))
+    
+    with tab3:
+        st.subheader(get_text('generate_pages', lang))
+        
+        if gaps_data:
+            st.info("💡 " + ("Selecciona los gaps para los que deseas generar páginas HTML" if lang == "es" else "Select gaps to generate HTML pages"))
+            
+            # Extraer subservicios del sitemap del usuario
+            user_urls = st.session_state.get('all_urls', {}).get('user', [])
+            selected_service = st.session_state.get('selected_service', selected_service)
+            subservices = extract_subservices_from_urls(user_urls, selected_service, lang)
+            
+            if subservices:
+                st.success(f"✅ {len(subservices)} " + ("subservicios detectados en tu sitemap" if lang == "es" else "subservices detected in your sitemap"))
+            
+            # Obtener zonas existentes del usuario
+            user_zones = set([z for z, _, _ in all_zones_data.get('user', []) if z])
+            
+            # Tabla con checkboxes para seleccionar gaps
+            st.markdown("### " + get_text('select_gaps', lang))
+            
+            selected_gaps = []
+            
+            for idx, gap in enumerate(gaps_data[:20]):  # Limitar a 20 para no saturar UI
+                col1, col2, col3, col4 = st.columns([0.5, 2, 1, 1])
+                
+                with col1:
+                    is_selected = st.checkbox("", key=f"select_gap_{idx}", label_visibility="collapsed")
+                
+                with col2:
+                    st.write(gap.get(get_text('zone', lang), ''))
+                
+                with col3:
+                    priority_badge = gap.get(get_text('priority', lang), '')
+                    st.write(priority_badge)
+                
+                with col4:
+                    score = gap.get(get_text('score', lang), 0)
+                    st.write(f"Score: {score}")
+                
+                if is_selected:
+                    selected_gaps.append({
+                        'zone': gap.get('_zone_raw', ''),
+                        'zone_display': gap.get(get_text('zone', lang), ''),
+                        'score': score,
+                        'priority': priority_badge
+                    })
+            
+            st.divider()
+            
+            if selected_gaps:
+                st.success(f"✅ {len(selected_gaps)} " + ("gaps seleccionados" if lang == "es" else "gaps selected"))
+                
+                # Preview de plantilla
+                if st.button(get_text('preview_template', lang), type="primary", use_container_width=True):
+                    # Preview del primer gap seleccionado
+                    first_gap = selected_gaps[0]
+                    
+                    st.markdown("---")
+                    st.markdown(f"### Preview: {first_gap['zone_display']}")
+                    
+                    # Renderizar plantilla
+                    html_preview = render_template(
+                        service_key=selected_service,
+                        zone=first_gap['zone'],
+                        user_zones=user_zones,
+                        subservices=subservices,
+                        lang=lang,
+                        telefono="+34900000000"  # Placeholder
+                    )
+                    
+                    # Mostrar HTML en expander
+                    with st.expander("📝 Ver código HTML", expanded=False):
+                        st.code(html_preview, language='html')
+                    
+                    # Renderizar HTML en iframe
+                    st.markdown("#### Vista previa:")
+                    st.components.v1.html(html_preview, height=800, scrolling=True)
+                    
+                    st.info("💡 " + ("Esta es una vista previa. En el siguiente paso podrás configurar WordPress para crear las páginas automáticamente." if lang == "es" else "This is a preview. In the next step you can configure WordPress to create pages automatically."))
+            
+            else:
+                st.warning("⚠️ " + ("Selecciona al menos un gap para continuar" if lang == "es" else "Select at least one gap to continue"))
+        
+        else:
+            st.info("ℹ️ " + ("No hay gaps para generar páginas" if lang == "es" else "No gaps to generate pages"))
