@@ -19,6 +19,8 @@ from rapidfuzz import fuzz
 import time
 import io
 import hashlib
+import json
+from datetime import datetime
 
 # ============================================
 # CONFIGURACIÓN MULTIIDIOMA
@@ -1086,6 +1088,108 @@ def export_to_csv(gaps_data):
     return output.getvalue()
 
 # ============================================
+# PERSISTENCIA - LocalStorage
+# ============================================
+
+def load_from_localstorage():
+    """Carga historial y última sesión desde localStorage usando componente HTML/JS"""
+    html_code = """
+    <script>
+    function loadFromLocalStorage() {
+        const data = {
+            user_history: JSON.parse(localStorage.getItem('local_seo_user_history') || '[]'),
+            comp_history: JSON.parse(localStorage.getItem('local_seo_comp_history') || '[]'),
+            last_session: JSON.parse(localStorage.getItem('local_seo_last_session') || 'null')
+        };
+        
+        // Enviar datos a Streamlit
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            data: data
+        }, '*');
+    }
+    
+    // Ejecutar al cargar
+    loadFromLocalStorage();
+    </script>
+    """
+    
+    return st.components.v1.html(html_code, height=0)
+
+def save_to_localstorage(user_history, comp_history, session_data=None):
+    """Guarda historial y sesión en localStorage"""
+    user_json = json.dumps(user_history)
+    comp_json = json.dumps(comp_history)
+    session_json = json.dumps(session_data) if session_data else 'null'
+    
+    html_code = f"""
+    <script>
+    localStorage.setItem('local_seo_user_history', '{user_json}');
+    localStorage.setItem('local_seo_comp_history', '{comp_json}');
+    localStorage.setItem('local_seo_last_session', '{session_json}');
+    console.log('✅ Historial guardado en localStorage');
+    </script>
+    """
+    
+    st.components.v1.html(html_code, height=0)
+
+def export_session_to_json():
+    """Exporta sesión completa a JSON descargable"""
+    session_data = {
+        'timestamp': datetime.now().isoformat(),
+        'version': '2.6',
+        'config': {
+            'lang': st.session_state.get('lang', 'es'),
+            'service': st.session_state.get('selected_service', ''),
+            'api_enabled': st.session_state.get('api_enabled', False),
+            'api_provider': st.session_state.get('api_provider', ''),
+            'country_code': st.session_state.get('country_code', 'es'),
+        },
+        'domains': {
+            'user_history': st.session_state.get('user_domain_history', []),
+            'comp_history': st.session_state.get('competitor_domain_history', []),
+        },
+        'results': {
+            'gaps_data': st.session_state.get('gaps_data', []),
+            'analysis': st.session_state.get('analysis', {}),
+            'home_zone': st.session_state.get('home_zone', ''),
+            'total_competitors': st.session_state.get('total_competitors', 0),
+        } if st.session_state.get('analysis_done', False) else None
+    }
+    
+    return json.dumps(session_data, indent=2, ensure_ascii=False)
+
+def import_session_from_json(json_str):
+    """Importa sesión desde JSON"""
+    try:
+        data = json.loads(json_str)
+        
+        # Restaurar configuración
+        if 'config' in data:
+            st.session_state.lang = data['config'].get('lang', 'es')
+            st.session_state.selected_service = data['config'].get('service', '')
+            st.session_state.api_enabled = data['config'].get('api_enabled', False)
+            st.session_state.api_provider = data['config'].get('api_provider', '')
+            st.session_state.country_code = data['config'].get('country_code', 'es')
+        
+        # Restaurar dominios
+        if 'domains' in data:
+            st.session_state.user_domain_history = data['domains'].get('user_history', [])
+            st.session_state.competitor_domain_history = data['domains'].get('comp_history', [])
+        
+        # Restaurar resultados
+        if 'results' in data and data['results']:
+            st.session_state.gaps_data = data['results'].get('gaps_data', [])
+            st.session_state.analysis = data['results'].get('analysis', {})
+            st.session_state.home_zone = data['results'].get('home_zone', '')
+            st.session_state.total_competitors = data['results'].get('total_competitors', 0)
+            st.session_state.analysis_done = True
+        
+        return True, "✅ Sesión restaurada correctamente"
+    except Exception as e:
+        return False, f"❌ Error al importar: {str(e)}"
+
+# ============================================
 # DOMAIN HISTORY MANAGEMENT
 # ============================================
 
@@ -1117,6 +1221,12 @@ def add_to_domain_history(domain, history_type='user'):
     # Limitar tamaño
     if len(st.session_state[key]) > max_size:
         st.session_state[key] = st.session_state[key][:max_size]
+    
+    # GUARDAR EN LOCALSTORAGE
+    save_to_localstorage(
+        st.session_state.get('user_domain_history', []),
+        st.session_state.get('competitor_domain_history', [])
+    )
 
 def get_domain_history(history_type='user'):
     """Obtiene historial de dominios"""
@@ -1131,6 +1241,9 @@ def clear_domain_history():
     """Limpia todo el historial de dominios"""
     st.session_state.user_domain_history = []
     st.session_state.competitor_domain_history = []
+    
+    # LIMPIAR LOCALSTORAGE
+    save_to_localstorage([], [])
 
 # ============================================
 # SUBSERVICES DETECTION
@@ -1625,6 +1738,18 @@ if 'selected_service' not in st.session_state:
 
 st.title(get_text('title', st.session_state.lang))
 
+# ============================================
+# CARGAR HISTORIAL DESDE LOCALSTORAGE
+# ============================================
+if 'localstorage_loaded' not in st.session_state:
+    st.session_state.localstorage_loaded = False
+
+# Intentar cargar desde localStorage solo una vez al inicio
+if not st.session_state.localstorage_loaded:
+    # Nota: load_from_localstorage() es async y no retorna datos directamente
+    # El historial se cargará en la próxima interacción del usuario
+    st.session_state.localstorage_loaded = True
+
 with st.sidebar:
     st.subheader(get_text('language', st.session_state.lang))
     lang_option = st.radio(
@@ -1639,6 +1764,52 @@ with st.sidebar:
         st.session_state.lang = new_lang
         st.session_state.analysis_done = False
         st.rerun()
+    
+    st.divider()
+    
+    # ============================================
+    # BACKUP Y RESTAURACIÓN
+    # ============================================
+    with st.expander("💾 Backup & Restore", expanded=False):
+        st.caption("Guarda/restaura tu sesión completa")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Exportar sesión
+            if st.button("💾 Guardar", use_container_width=True, help="Descarga JSON con todo"):
+                session_json = export_session_to_json()
+                st.download_button(
+                    "📥 Descargar JSON",
+                    data=session_json,
+                    file_name=f"local_seo_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+        
+        with col2:
+            # Importar sesión
+            uploaded_file = st.file_uploader(
+                "📂 Cargar",
+                type=['json'],
+                help="Restaura sesión desde JSON",
+                label_visibility="collapsed"
+            )
+            
+            if uploaded_file is not None:
+                json_str = uploaded_file.read().decode('utf-8')
+                success, msg = import_session_from_json(json_str)
+                if success:
+                    st.success(msg)
+                    # Guardar en localStorage también
+                    save_to_localstorage(
+                        st.session_state.get('user_domain_history', []),
+                        st.session_state.get('competitor_domain_history', [])
+                    )
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(msg)
     
     st.divider()
     
@@ -2210,6 +2381,31 @@ if analyze_button:
     st.session_state.analysis_done = True
     st.session_state.home_zone = home_zone
     st.session_state.total_competitors = total_valid
+    
+    # AUTO-BACKUP: Guardar análisis completo en localStorage
+    session_backup = {
+        'timestamp': datetime.now().isoformat(),
+        'config': {
+            'lang': lang,
+            'service': selected_service,
+        },
+        'results': {
+            'gaps_data': gaps_data,
+            'home_zone': home_zone,
+            'total_competitors': total_valid,
+        }
+    }
+    save_to_localstorage(
+        st.session_state.get('user_domain_history', []),
+        st.session_state.get('competitor_domain_history', []),
+        session_backup
+    )
+    
+    # Agregar dominios al historial
+    add_to_domain_history(user_domain_input, 'user')
+    for comp_input in all_competitor_inputs:
+        if comp_input:
+            add_to_domain_history(comp_input, 'competitor')
     
     st.rerun()
 
