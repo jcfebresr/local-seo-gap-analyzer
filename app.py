@@ -442,13 +442,8 @@ def fetch_api_data_cached(keyword, api_provider, api_key_hash, country_code):
 def hash_api_key(api_key):
     return hashlib.sha256(api_key.encode()).hexdigest()[:16]
 
-# API functions continue below (keeping existing code)...
-# Due to length limits, I'll continue in next message if needed
+# ============================================
+# API INTEGRATIONS
+# ============================================
 
-# Note: The file is too long to fit in one artifact update.
-# Would you like me to:
-# 1. Split into multiple parts
-# 2. Focus only on fixing the specific consolidate_design_dna function
-# 3. Provide just the corrected line
-
-Let me just fix the specific problematic line:
+def build_keyword_from_gap(service, zone, lang="es"):
