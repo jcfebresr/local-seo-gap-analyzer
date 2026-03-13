@@ -106,6 +106,13 @@ TRANSLATIONS = {
         "competitors_required": "Competidores Obligatorios",
         "competitors_optional": "Competidores Adicionales (Opcional)",
         "total_competitors": "Total competidores",
+        "generate_pages": "📄 Generar Páginas",
+        "select_gaps": "Seleccionar gaps para crear páginas",
+        "preview_template": "👁️ Preview Plantilla",
+        "template_selector": "Seleccionar plantilla",
+        "base_template": "Plantilla Base",
+        "premium_template": "Plantilla Premium",
+        "minimal_template": "Plantilla Minimalista",
     },
     "en": {
         "title": "🎯 Local SEO Geo-Gap Analyzer",
@@ -188,6 +195,13 @@ TRANSLATIONS = {
         "competitors_required": "Required Competitors",
         "competitors_optional": "Additional Competitors (Optional)",
         "total_competitors": "Total competitors",
+        "generate_pages": "📄 Generate Pages",
+        "select_gaps": "Select gaps to create pages",
+        "preview_template": "👁️ Preview Template",
+        "template_selector": "Select template",
+        "base_template": "Base Template",
+        "premium_template": "Premium Template",
+        "minimal_template": "Minimal Template",
     }
 }
 
@@ -1119,6 +1133,463 @@ def clear_domain_history():
     st.session_state.competitor_domain_history = []
 
 # ============================================
+# SUBSERVICES DETECTION
+# ============================================
+
+SUBSERVICE_PATTERNS = {
+    "es": {
+        "cerrajero": ["urgente", "24h", "24-horas", "apertura", "copia-llaves", "cambio-cerradura", "bombillo", "emergencia"],
+        "fontanero": ["urgente", "24h", "desatascos", "fugas", "calderas", "calentador", "emergencia", "tuberias"],
+        "electricista": ["urgente", "24h", "instalacion", "reparacion", "certificados", "boletines", "emergencia", "cuadro-electrico"],
+        "pintor": ["interior", "exterior", "fachadas", "gotele", "lacado", "barnizado", "presupuesto"],
+        "carpintero": ["muebles", "puertas", "ventanas", "armarios", "cocinas", "tarima", "presupuesto"],
+        "cristalero": ["urgente", "ventanas", "mamparas", "espejos", "doble-acristalamiento", "emergencia"],
+        "reformas": ["integral", "cocina", "baño", "parcial", "vivienda", "local", "presupuesto"],
+        "mudanzas": ["nacional", "internacional", "embalaje", "pianos", "oficinas", "guardamuebles", "presupuesto"],
+        "limpieza": ["hogar", "oficinas", "comunidades", "fin-obra", "cristales", "presupuesto"],
+        "jardinero": ["poda", "diseño", "mantenimiento", "cesped", "riego", "presupuesto"],
+        "aire-acondicionado": ["instalacion", "reparacion", "mantenimiento", "recarga-gas", "limpieza", "presupuesto"],
+        "albañil": ["obras", "reformas", "fachadas", "tabiques", "solados", "presupuesto"],
+        "tecnico-climatizacion": ["instalacion", "reparacion", "mantenimiento", "calderas", "aerotermia", "presupuesto"],
+        "instalador-gas": ["calderas", "calentadores", "certificados", "revision", "instalacion", "presupuesto"],
+        "tapicero": ["sofas", "sillas", "cortinas", "cabeceros", "restauracion", "presupuesto"],
+    },
+    "en": {
+        "locksmith": ["emergency", "24-hour", "24h", "car-keys", "lock-change", "lock-repair", "rekey"],
+        "plumber": ["emergency", "24-hour", "drain-cleaning", "leak-repair", "water-heater", "pipe-repair"],
+        "electrician": ["emergency", "24-hour", "installation", "repair", "panel-upgrade", "outlets", "lighting"],
+        "painter": ["interior", "exterior", "cabinet-painting", "deck-staining", "estimate"],
+        "carpenter": ["cabinets", "doors", "windows", "framing", "decks", "furniture", "estimate"],
+        "glazier": ["emergency", "window-repair", "shower-doors", "mirrors", "glass-replacement"],
+        "remodeling": ["kitchen", "bathroom", "basement", "full-house", "additions", "estimate"],
+        "moving": ["local", "long-distance", "packing", "piano", "office", "storage", "estimate"],
+        "cleaning": ["house", "office", "post-construction", "deep-cleaning", "windows", "estimate"],
+        "gardener": ["lawn-care", "landscaping", "tree-trimming", "irrigation", "design", "estimate"],
+        "hvac": ["installation", "repair", "maintenance", "ac-repair", "heating-repair", "estimate"],
+        "handyman": ["repairs", "installation", "assembly", "drywall", "painting", "estimate"],
+        "roofer": ["repair", "replacement", "inspection", "gutters", "shingles", "estimate"],
+        "mason": ["brickwork", "stonework", "chimneys", "patios", "walls", "estimate"],
+        "pest-control": ["termites", "rodents", "bed-bugs", "ants", "mosquitoes", "estimate"],
+    }
+}
+
+def extract_subservices_from_urls(urls, service_key, lang="es"):
+    """Detecta subservicios del sitemap del usuario"""
+    subservices = []
+    patterns = SUBSERVICE_PATTERNS.get(lang, {}).get(service_key, [])
+    
+    for url in urls:
+        if not url or not isinstance(url, str):
+            continue
+        
+        url_lower = url.lower()
+        
+        # Buscar patrones de subservicios
+        for pattern in patterns:
+            if pattern in url_lower:
+                # Extraer título del slug
+                path = urlparse(url).path
+                slug = path.strip('/').split('/')[-1]
+                
+                # Crear entrada de subservicio
+                subservices.append({
+                    'name': slug.replace('-', ' ').title(),
+                    'url': url,
+                    'pattern': pattern
+                })
+                break
+    
+    # Eliminar duplicados por URL
+    seen = set()
+    unique_subservices = []
+    for sub in subservices:
+        if sub['url'] not in seen:
+            seen.add(sub['url'])
+            unique_subservices.append(sub)
+    
+    return unique_subservices
+
+# ============================================
+# HTML TEMPLATE SYSTEM
+# ============================================
+
+def get_base_template(lang="es"):
+    """Retorna plantilla HTML base responsive para cualquier servicio"""
+    
+    if lang == "es":
+        template = """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{SERVICIO_DISPLAY} en {ZONA_DISPLAY} - Servicio profesional {HORA_SERVICIO}. Presupuesto sin compromiso. Llamar ahora.">
+    <title>{SERVICIO_DISPLAY} en {ZONA_DISPLAY} | Servicio Profesional {HORA_SERVICIO}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 60px 0; text-align: center; }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        .subtitle { font-size: 1.2rem; opacity: 0.9; }
+        .cta-button { display: inline-block; background: #ff6b6b; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
+        .cta-button:hover { transform: scale(1.05); }
+        section { padding: 60px 0; }
+        h2 { font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .card h3 { color: #667eea; margin-bottom: 15px; }
+        .zones-list, .services-list { list-style: none; margin-top: 20px; }
+        .zones-list li, .services-list li { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .zones-list a, .services-list a { color: #667eea; text-decoration: none; font-weight: 500; }
+        .zones-list a:hover, .services-list a:hover { text-decoration: underline; }
+        .faq { background: #f8f9fa; }
+        .faq-item { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }
+        .faq-item h3 { font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }
+        footer { background: #2c3e50; color: white; text-align: center; padding: 40px 0; }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>{SERVICIO_DISPLAY} en {ZONA_DISPLAY}</h1>
+            <p class="subtitle">Servicio profesional de {SERVICIO} en {ZONA_DISPLAY} {HORA_SERVICIO}</p>
+            <a href="tel:{TELEFONO}" class="cta-button">☎ Llamar Ahora</a>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2>Tu {SERVICIO_DISPLAY} de confianza en {ZONA_DISPLAY}</h2>
+            <p>Ofrecemos servicios profesionales de {SERVICIO} en {ZONA_DISPLAY} con años de experiencia. Nuestro equipo está cualificado para resolver cualquier problema relacionado con {SERVICIO_DESCRIPCION}.</p>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>✓ Profesionales Cualificados</h3>
+                    <p>Equipo con años de experiencia en {SERVICIO}</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Presupuesto Sin Compromiso</h3>
+                    <p>Valoración gratuita antes de iniciar el trabajo</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Garantía de Servicio</h3>
+                    <p>Todos nuestros trabajos están garantizados</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="services-section">
+        <div class="container">
+            <h2>Nuestros Servicios de {SERVICIO_DISPLAY}</h2>
+            {ENLACES_SUBSERVICIOS}
+        </div>
+    </section>
+
+    <section>
+        <div class="container">
+            <h2>También atendemos en zonas cercanas a {ZONA_DISPLAY}</h2>
+            {ENLACES_ZONAS}
+        </div>
+    </section>
+
+    <section class="faq">
+        <div class="container">
+            <h2>Preguntas Frecuentes</h2>
+            {FAQ_CONTENT}
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 {SERVICIO_DISPLAY} {ZONA_DISPLAY}. Todos los derechos reservados.</p>
+            <p>Servicio profesional de {SERVICIO} en {ZONA_DISPLAY} y alrededores</p>
+        </div>
+    </footer>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "{SERVICIO_DISPLAY} {ZONA_DISPLAY}",
+        "description": "Servicio profesional de {SERVICIO} en {ZONA_DISPLAY}",
+        "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "{ZONA_DISPLAY}",
+            "addressCountry": "ES"
+        },
+        "telephone": "{TELEFONO}",
+        "areaServed": "{ZONA_DISPLAY}"
+    }
+    </script>
+</body>
+</html>
+"""
+    else:  # English
+        template = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{SERVICIO_DISPLAY} in {ZONA_DISPLAY} - Professional {HORA_SERVICIO} service. Free estimates. Call now.">
+    <title>{SERVICIO_DISPLAY} in {ZONA_DISPLAY} | Professional {HORA_SERVICIO} Service</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 60px 0; text-align: center; }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        .subtitle { font-size: 1.2rem; opacity: 0.9; }
+        .cta-button { display: inline-block; background: #ff6b6b; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
+        .cta-button:hover { transform: scale(1.05); }
+        section { padding: 60px 0; }
+        h2 { font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .card h3 { color: #667eea; margin-bottom: 15px; }
+        .zones-list, .services-list { list-style: none; margin-top: 20px; }
+        .zones-list li, .services-list li { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .zones-list a, .services-list a { color: #667eea; text-decoration: none; font-weight: 500; }
+        .zones-list a:hover, .services-list a:hover { text-decoration: underline; }
+        .faq { background: #f8f9fa; }
+        .faq-item { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }
+        .faq-item h3 { font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }
+        footer { background: #2c3e50; color: white; text-align: center; padding: 40px 0; }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>{SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h1>
+            <p class="subtitle">Professional {SERVICIO} service in {ZONA_DISPLAY} {HORA_SERVICIO}</p>
+            <a href="tel:{TELEFONO}" class="cta-button">☎ Call Now</a>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2>Your Trusted {SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h2>
+            <p>We offer professional {SERVICIO} services in {ZONA_DISPLAY} with years of experience. Our qualified team can solve any problem related to {SERVICIO_DESCRIPCION}.</p>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>✓ Qualified Professionals</h3>
+                    <p>Team with years of experience in {SERVICIO}</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Free Estimates</h3>
+                    <p>Free assessment before starting work</p>
+                </div>
+                <div class="card">
+                    <h3>✓ Service Guarantee</h3>
+                    <p>All our work is guaranteed</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="services-section">
+        <div class="container">
+            <h2>Our {SERVICIO_DISPLAY} Services</h2>
+            {ENLACES_SUBSERVICIOS}
+        </div>
+    </section>
+
+    <section>
+        <div class="container">
+            <h2>We also serve areas near {ZONA_DISPLAY}</h2>
+            {ENLACES_ZONAS}
+        </div>
+    </section>
+
+    <section class="faq">
+        <div class="container">
+            <h2>Frequently Asked Questions</h2>
+            {FAQ_CONTENT}
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 {SERVICIO_DISPLAY} {ZONA_DISPLAY}. All rights reserved.</p>
+            <p>Professional {SERVICIO} service in {ZONA_DISPLAY} and surrounding areas</p>
+        </div>
+    </footer>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "{SERVICIO_DISPLAY} {ZONA_DISPLAY}",
+        "description": "Professional {SERVICIO} service in {ZONA_DISPLAY}",
+        "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "{ZONA_DISPLAY}",
+            "addressCountry": "US"
+        },
+        "telephone": "{TELEFONO}",
+        "areaServed": "{ZONA_DISPLAY}"
+    }
+    </script>
+</body>
+</html>
+"""
+    
+    return template
+
+def get_service_description(service_key, lang="es"):
+    """Retorna descripción específica del servicio"""
+    descriptions = {
+        "es": {
+            "cerrajero": "apertura de puertas, cambio de cerraduras, copia de llaves y servicios de emergencia",
+            "fontanero": "reparación de fugas, desatascos, instalación de calderas y servicios de fontanería",
+            "electricista": "instalaciones eléctricas, reparaciones, certificados y servicios eléctricos",
+            "pintor": "pintura interior y exterior, lacado, restauración y acabados profesionales",
+            "carpintero": "fabricación e instalación de muebles, puertas, ventanas y trabajos en madera",
+            "cristalero": "instalación y reparación de cristales, ventanas, mamparas y espejos",
+            "reformas": "reformas integrales, cocinas, baños y remodelaciones completas",
+            "mudanzas": "mudanzas locales, nacionales, embalaje y almacenamiento",
+            "limpieza": "limpieza de hogares, oficinas, comunidades y servicios de limpieza profesional",
+            "jardinero": "diseño, mantenimiento de jardines, poda y servicios de jardinería",
+            "aire-acondicionado": "instalación, reparación y mantenimiento de sistemas de climatización",
+            "albañil": "obras de albañilería, reformas, fachadas y trabajos de construcción",
+            "tecnico-climatizacion": "instalación y mantenimiento de sistemas de calefacción y climatización",
+            "instalador-gas": "instalación de calderas, calentadores, certificados y revisiones de gas",
+            "tapicero": "tapizado de sofás, sillas, cortinas y restauración de muebles",
+        },
+        "en": {
+            "locksmith": "lock changes, key duplication, emergency lockout services and security solutions",
+            "plumber": "leak repairs, drain cleaning, water heater installation and plumbing services",
+            "electrician": "electrical installations, repairs, panel upgrades and electrical services",
+            "painter": "interior and exterior painting, cabinet refinishing and professional finishes",
+            "carpenter": "custom woodwork, cabinet installation, trim work and carpentry services",
+            "glazier": "window installation, glass repair, shower doors and glazing services",
+            "remodeling": "kitchen remodels, bathroom renovations and complete home renovations",
+            "moving": "local and long-distance moves, packing services and storage solutions",
+            "cleaning": "house cleaning, office cleaning, deep cleaning and professional cleaning services",
+            "gardener": "landscape design, lawn maintenance, tree care and gardening services",
+            "hvac": "AC installation, heating repair, maintenance and HVAC services",
+            "handyman": "home repairs, installations, assembly and handyman services",
+            "roofer": "roof repairs, replacements, inspections and roofing services",
+            "mason": "brickwork, stonework, concrete work and masonry services",
+            "pest-control": "pest inspections, treatments, prevention and pest control services",
+        }
+    }
+    
+    return descriptions.get(lang, {}).get(service_key, "servicios profesionales")
+
+def get_service_hora(service_key, lang="es"):
+    """Determina si el servicio es típicamente 24h o horario normal"""
+    emergency_services = ["cerrajero", "fontanero", "electricista", "cristalero", 
+                         "locksmith", "plumber", "electrician", "glazier"]
+    
+    if service_key in emergency_services:
+        return "24 horas" if lang == "es" else "24/7"
+    else:
+        return "" if lang == "es" else ""
+
+def get_faq_content(service_key, zone, lang="es"):
+    """Genera FAQs específicas por servicio"""
+    if lang == "es":
+        faqs = {
+            "cerrajero": [
+                ("¿Cuánto cuesta un cerrajero en {ZONA}?", "El precio varía según el tipo de servicio. Ofrecemos presupuesto sin compromiso antes de realizar cualquier trabajo."),
+                ("¿Tienen servicio de cerrajero 24 horas en {ZONA}?", "Sí, ofrecemos servicio de emergencia las 24 horas del día, los 7 días de la semana en {ZONA}."),
+                ("¿Cuánto tardan en llegar?", "Nuestro tiempo de respuesta en {ZONA} es generalmente de 20-30 minutos dependiendo de la zona específica."),
+            ],
+            "fontanero": [
+                ("¿Cuánto cuesta un fontanero en {ZONA}?", "El coste depende del tipo de reparación. Realizamos presupuestos gratuitos sin compromiso."),
+                ("¿Atienden emergencias de fontanería?", "Sí, disponemos de servicio de urgencias 24h para fugas y averías graves en {ZONA}."),
+                ("¿Qué servicios de fontanería ofrecen?", "Reparación de fugas, desatascos, instalación de calderas y todo tipo de servicios de fontanería."),
+            ],
+        }
+    else:
+        faqs = {
+            "locksmith": [
+                ("How much does a locksmith cost in {ZONA}?", "Pricing varies by service type. We provide free estimates before starting any work."),
+                ("Do you have 24-hour locksmith service in {ZONA}?", "Yes, we offer 24/7 emergency locksmith services in {ZONA}."),
+                ("How quickly can you arrive?", "Our typical response time in {ZONA} is 20-30 minutes depending on your exact location."),
+            ],
+            "plumber": [
+                ("How much does a plumber cost in {ZONA}?", "Cost depends on the repair needed. We provide free estimates with no obligation."),
+                ("Do you handle plumbing emergencies?", "Yes, we have 24-hour emergency service for leaks and serious issues in {ZONA}."),
+                ("What plumbing services do you offer?", "Leak repairs, drain cleaning, water heater installation and all plumbing services."),
+            ],
+        }
+    
+    # FAQs genéricas si no hay específicas
+    default_faqs = [
+        ("¿Por qué elegirnos?" if lang == "es" else "Why choose us?", 
+         "Somos profesionales con años de experiencia en {ZONA}." if lang == "es" else "We are professionals with years of experience in {ZONA}."),
+        ("¿Ofrecen garantía?" if lang == "es" else "Do you offer warranty?", 
+         "Sí, todos nuestros trabajos tienen garantía." if lang == "es" else "Yes, all our work is guaranteed."),
+    ]
+    
+    service_faqs = faqs.get(service_key, default_faqs)
+    
+    html = ""
+    for question, answer in service_faqs:
+        q = question.replace("{ZONA}", zone.title())
+        a = answer.replace("{ZONA}", zone.title())
+        html += f'<div class="faq-item"><h3>{q}</h3><p>{a}</p></div>\n'
+    
+    return html
+
+def render_template(service_key, zone, user_zones, subservices, lang="es", telefono="+34900000000"):
+    """Renderiza plantilla HTML con datos reales"""
+    template = get_base_template(lang)
+    
+    # Datos básicos
+    service_display = SERVICES.get(lang, {}).get(service_key, service_key).title()
+    zona_display = zone.replace('-', ' ').title()
+    servicio_descripcion = get_service_description(service_key, lang)
+    hora_servicio = get_service_hora(service_key, lang)
+    
+    # Enlaces a zonas cercanas
+    enlaces_zonas_html = '<ul class="zones-list">\n'
+    for z in sorted(user_zones)[:10]:  # Máximo 10 zonas
+        if z != zone:  # No enlazar a sí misma
+            z_display = z.replace('-', ' ').title()
+            enlaces_zonas_html += f'    <li><a href="/{service_key}-{z}/">{service_display} en {z_display}</a></li>\n'
+    enlaces_zonas_html += '</ul>'
+    
+    # Enlaces a subservicios
+    if subservices:
+        enlaces_sub_html = '<ul class="services-list">\n'
+        for sub in subservices[:8]:  # Máximo 8 subservicios
+            enlaces_sub_html += f'    <li><a href="{sub["url"]}">{sub["name"]}</a></li>\n'
+        enlaces_sub_html += '</ul>'
+    else:
+        enlaces_sub_html = '<p>' + ('Consulta todos nuestros servicios especializados.' if lang == 'es' else 'Check out all our specialized services.') + '</p>'
+    
+    # FAQ
+    faq_html = get_faq_content(service_key, zona_display, lang)
+    
+    # Reemplazar placeholders
+    html = template.replace('{SERVICIO}', service_key)
+    html = html.replace('{SERVICIO_DISPLAY}', service_display)
+    html = html.replace('{ZONA}', zone)
+    html = html.replace('{ZONA_DISPLAY}', zona_display)
+    html = html.replace('{SERVICIO_DESCRIPCION}', servicio_descripcion)
+    html = html.replace('{HORA_SERVICIO}', hora_servicio)
+    html = html.replace('{TELEFONO}', telefono)
+    html = html.replace('{ENLACES_ZONAS}', enlaces_zonas_html)
+    html = html.replace('{ENLACES_SUBSERVICIOS}', enlaces_sub_html)
+    html = html.replace('{FAQ_CONTENT}', faq_html)
+    
+    return html
+
+# ============================================
 # STREAMLIT UI
 # ============================================
 
@@ -1820,9 +2291,10 @@ if st.session_state.analysis_done:
     
     st.divider()
     
-    tab1, tab2 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         f"🎯 {get_text('gaps_found', lang)} ({len(gaps_data)})",
-        f"💪 {get_text('strengths_found', lang)} ({len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2'])})"
+        f"💪 {get_text('strengths_found', lang)} ({len(analysis['strengths']['tier_1']) + len(analysis['strengths']['tier_2'])})",
+        f"📄 {get_text('generate_pages', lang)}"
     ])
     
     with tab1:
@@ -1940,3 +2412,88 @@ if st.session_state.analysis_done:
         
         if not analysis['strengths']['tier_1'] and not analysis['strengths']['tier_2']:
             st.info("ℹ️ " + ("No tienes fortalezas únicas en este momento" if lang == "es" else "You don't have unique strengths at this time"))
+    
+    with tab3:
+        st.subheader(get_text('generate_pages', lang))
+        
+        if gaps_data:
+            st.info("💡 " + ("Selecciona los gaps para los que deseas generar páginas HTML" if lang == "es" else "Select gaps to generate HTML pages"))
+            
+            # Extraer subservicios del sitemap del usuario
+            user_urls = all_urls.get('user', [])
+            subservices = extract_subservices_from_urls(user_urls, selected_service, lang)
+            
+            if subservices:
+                st.success(f"✅ {len(subservices)} " + ("subservicios detectados en tu sitemap" if lang == "es" else "subservices detected in your sitemap"))
+            
+            # Obtener zonas existentes del usuario
+            user_zones = set([z for z, _, _ in all_zones_data.get('user', []) if z])
+            
+            # Tabla con checkboxes para seleccionar gaps
+            st.markdown("### " + get_text('select_gaps', lang))
+            
+            selected_gaps = []
+            
+            for idx, gap in enumerate(gaps_data[:20]):  # Limitar a 20 para no saturar UI
+                col1, col2, col3, col4 = st.columns([0.5, 2, 1, 1])
+                
+                with col1:
+                    is_selected = st.checkbox("", key=f"select_gap_{idx}", label_visibility="collapsed")
+                
+                with col2:
+                    st.write(gap.get(get_text('zone', lang), ''))
+                
+                with col3:
+                    priority_badge = gap.get(get_text('priority', lang), '')
+                    st.write(priority_badge)
+                
+                with col4:
+                    score = gap.get(get_text('score', lang), 0)
+                    st.write(f"Score: {score}")
+                
+                if is_selected:
+                    selected_gaps.append({
+                        'zone': gap.get('_zone_raw', ''),
+                        'zone_display': gap.get(get_text('zone', lang), ''),
+                        'score': score,
+                        'priority': priority_badge
+                    })
+            
+            st.divider()
+            
+            if selected_gaps:
+                st.success(f"✅ {len(selected_gaps)} " + ("gaps seleccionados" if lang == "es" else "gaps selected"))
+                
+                # Preview de plantilla
+                if st.button(get_text('preview_template', lang), type="primary", use_container_width=True):
+                    # Preview del primer gap seleccionado
+                    first_gap = selected_gaps[0]
+                    
+                    st.markdown("---")
+                    st.markdown(f"### Preview: {first_gap['zone_display']}")
+                    
+                    # Renderizar plantilla
+                    html_preview = render_template(
+                        service_key=selected_service,
+                        zone=first_gap['zone'],
+                        user_zones=user_zones,
+                        subservices=subservices,
+                        lang=lang,
+                        telefono="+34900000000"  # Placeholder
+                    )
+                    
+                    # Mostrar HTML en expander
+                    with st.expander("📝 Ver código HTML", expanded=False):
+                        st.code(html_preview, language='html')
+                    
+                    # Renderizar HTML en iframe
+                    st.markdown("#### Vista previa:")
+                    st.components.v1.html(html_preview, height=800, scrolling=True)
+                    
+                    st.info("💡 " + ("Esta es una vista previa. En el siguiente paso podrás configurar WordPress para crear las páginas automáticamente." if lang == "es" else "This is a preview. In the next step you can configure WordPress to create pages automatically."))
+            
+            else:
+                st.warning("⚠️ " + ("Selecciona al menos un gap para continuar" if lang == "es" else "Select at least one gap to continue"))
+        
+        else:
+            st.info("ℹ️ " + ("No hay gaps para generar páginas" if lang == "es" else "No gaps to generate pages"))
