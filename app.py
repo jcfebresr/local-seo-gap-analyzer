@@ -1732,6 +1732,128 @@ def render_template(service_key, zone, user_zones, subservices, lang="es", telef
     # FAQ
     faq_html = get_faq_content(service_key, zona_display, lang)
     
+    # ============================================
+    # SECCIONES CONDICIONALES SEGÚN DESIGN PROFILE
+    # ============================================
+    
+    testimonials_html = ""
+    gallery_html = ""
+    
+    if design_profile and design_profile.get('recommended_sections'):
+        sections = design_profile['recommended_sections']
+        
+        # Sección Testimonials (si competidores la tienen)
+        if sections.get('testimonials', False):
+            if lang == 'es':
+                testimonials_html = """
+    <section style="background: #f8f9fa; padding: 60px 0;">
+        <div class="container">
+            <h2>Lo que dicen nuestros clientes</h2>
+            <div class="grid">
+                <div class="card">
+                    <p style="font-style: italic; margin-bottom: 15px;">"Servicio excelente y muy profesional. Llegaron rápido y resolvieron el problema en poco tiempo."</p>
+                    <p style="font-weight: bold; color: #667eea;">— María G., {ZONA_DISPLAY}</p>
+                </div>
+                <div class="card">
+                    <p style="font-style: italic; margin-bottom: 15px;">"Muy recomendable. Precios justos y trabajo de calidad. Volveré a contactarles sin duda."</p>
+                    <p style="font-weight: bold; color: #667eea;">— Carlos R., {ZONA_DISPLAY}</p>
+                </div>
+                <div class="card">
+                    <p style="font-style: italic; margin-bottom: 15px;">"Puntuales, limpios y eficientes. El mejor servicio de {SERVICIO} que he encontrado en {ZONA_DISPLAY}."</p>
+                    <p style="font-weight: bold; color: #667eea;">— Ana M., {ZONA_DISPLAY}</p>
+                </div>
+            </div>
+        </div>
+    </section>
+"""
+            else:
+                testimonials_html = """
+    <section style="background: #f8f9fa; padding: 60px 0;">
+        <div class="container">
+            <h2>What our customers say</h2>
+            <div class="grid">
+                <div class="card">
+                    <p style="font-style: italic; margin-bottom: 15px;">"Excellent and very professional service. They arrived quickly and solved the problem in no time."</p>
+                    <p style="font-weight: bold; color: #667eea;">— Mary G., {ZONA_DISPLAY}</p>
+                </div>
+                <div class="card">
+                    <p style="font-style: italic; margin-bottom: 15px;">"Highly recommended. Fair prices and quality work. I will definitely contact them again."</p>
+                    <p style="font-weight: bold; color: #667eea;">— Charles R., {ZONA_DISPLAY}</p>
+                </div>
+                <div class="card">
+                    <p style="font-style: italic; margin-bottom: 15px;">"Punctual, clean and efficient. The best {SERVICIO} service I have found in {ZONA_DISPLAY}."</p>
+                    <p style="font-weight: bold; color: #667eea;">— Anna M., {ZONA_DISPLAY}</p>
+                </div>
+            </div>
+        </div>
+    </section>
+"""
+        
+        # Sección Gallery (si competidores la tienen)
+        if sections.get('gallery', False):
+            if lang == 'es':
+                gallery_html = """
+    <section style="padding: 60px 0;">
+        <div class="container">
+            <h2>Nuestros trabajos en {ZONA_DISPLAY}</h2>
+            <p style="margin-bottom: 30px;">Algunos ejemplos de nuestros proyectos de {SERVICIO} realizados en {ZONA_DISPLAY} y alrededores.</p>
+            <div class="grid">
+                <div class="card" style="text-align: center;">
+                    <div style="background: #e0e0e0; height: 200px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #666;">
+                        <span>Proyecto 1</span>
+                    </div>
+                    <h3>Trabajo en {ZONA_DISPLAY}</h3>
+                </div>
+                <div class="card" style="text-align: center;">
+                    <div style="background: #e0e0e0; height: 200px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #666;">
+                        <span>Proyecto 2</span>
+                    </div>
+                    <h3>Servicio completado</h3>
+                </div>
+                <div class="card" style="text-align: center;">
+                    <div style="background: #e0e0e0; height: 200px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #666;">
+                        <span>Proyecto 3</span>
+                    </div>
+                    <h3>Cliente satisfecho</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+"""
+            else:
+                gallery_html = """
+    <section style="padding: 60px 0;">
+        <div class="container">
+            <h2>Our work in {ZONA_DISPLAY}</h2>
+            <p style="margin-bottom: 30px;">Some examples of our {SERVICIO} projects completed in {ZONA_DISPLAY} and surrounding areas.</p>
+            <div class="grid">
+                <div class="card" style="text-align: center;">
+                    <div style="background: #e0e0e0; height: 200px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #666;">
+                        <span>Project 1</span>
+                    </div>
+                    <h3>Work in {ZONA_DISPLAY}</h3>
+                </div>
+                <div class="card" style="text-align: center;">
+                    <div style="background: #e0e0e0; height: 200px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #666;">
+                        <span>Project 2</span>
+                    </div>
+                    <h3>Service completed</h3>
+                </div>
+                <div class="card" style="text-align: center;">
+                    <div style="background: #e0e0e0; height: 200px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #666;">
+                        <span>Project 3</span>
+                    </div>
+                    <h3>Satisfied customer</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+"""
+    
+    # Insertar secciones condicionales en el template
+    # Buscar el punto de inserción (antes de la sección de zonas cercanas)
+    sections_insertion = testimonials_html + gallery_html
+    
     # Reemplazar placeholders
     html = template.replace('{SERVICIO}', service_key)
     html = html.replace('{SERVICIO_DISPLAY}', service_display)
@@ -1743,6 +1865,7 @@ def render_template(service_key, zone, user_zones, subservices, lang="es", telef
     html = html.replace('{ENLACES_ZONAS}', enlaces_zonas_html)
     html = html.replace('{ENLACES_SUBSERVICIOS}', enlaces_sub_html)
     html = html.replace('{FAQ_CONTENT}', faq_html)
+    html = html.replace('{SECCIONES_CONDICIONALES}', sections_insertion)
     
     return html
 
