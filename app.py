@@ -417,7 +417,6 @@ def get_service_variations(service_key, lang="es"):
 def extract_urls_from_sitemap_cached(sitemap_url, max_urls=5000):
     try:
         df = adv.sitemap_to_df(sitemap_url)
-        # FILTRAR None/NaN antes de convertir a lista
         urls = df['loc'].dropna().astype(str).tolist()
         
         if len(urls) > max_urls:
@@ -591,10 +590,8 @@ def calculate_gap_score(comp_count, volume=0, has_api=False):
         }
         return comp_score_map.get(min(comp_count, 3), min(comp_count * 10, 100))
     
-    # Normalizar competidores (escala hasta 10)
     comp_normalized = min((comp_count / 10) * 100, 100)
     
-    # Normalizar volumen
     import math
     if volume <= 0:
         vol_normalized = 0
@@ -975,7 +972,6 @@ def suggest_best_slug(gap_zone, service_key, comp_zones_data_list, lang="es"):
     }
 
 def filter_urls(urls, lang="es"):
-    """Filtra URLs con validación defensiva contra None/NaN"""
     discard_patterns = [
         '/blog/', '/tag/', '/tags/', '/category/', '/categories/',
         '/author/', '/page/', '/search/',
@@ -987,7 +983,6 @@ def filter_urls(urls, lang="es"):
     
     filtered = []
     for url in urls:
-        # VALIDACIÓN DEFENSIVA: Ignorar None y no-strings
         if not url or not isinstance(url, str):
             continue
             
@@ -1090,7 +1085,6 @@ def export_to_csv(gaps_data):
 # ============================================
 
 def add_to_domain_history(domain, history_type='user'):
-    """Agrega dominio al historial (máx 10 para user, 20 para competitors)"""
     if not domain:
         return
     
@@ -1108,18 +1102,15 @@ def add_to_domain_history(domain, history_type='user'):
     if key not in st.session_state:
         st.session_state[key] = []
     
-    # Evitar duplicados y mantener orden (más reciente primero)
     if normalized in st.session_state[key]:
         st.session_state[key].remove(normalized)
     
     st.session_state[key].insert(0, normalized)
     
-    # Limitar tamaño
     if len(st.session_state[key]) > max_size:
         st.session_state[key] = st.session_state[key][:max_size]
 
 def get_domain_history(history_type='user'):
-    """Obtiene historial de dominios"""
     if history_type == 'user':
         key = 'user_domain_history'
     else:
@@ -1128,7 +1119,6 @@ def get_domain_history(history_type='user'):
     return st.session_state.get(key, [])
 
 def clear_domain_history():
-    """Limpia todo el historial de dominios"""
     st.session_state.user_domain_history = []
     st.session_state.competitor_domain_history = []
 
@@ -1137,22 +1127,17 @@ def clear_domain_history():
 # ============================================
 
 def extract_colors_from_css(soup):
-    """Extrae colores de CSS inline y style tags"""
     colors = []
     
-    # Buscar en style tags
     for style_tag in soup.find_all('style'):
         css_text = style_tag.string
         if css_text:
-            # Buscar colores hex
             hex_colors = re.findall(r'#[0-9a-fA-F]{6}', css_text)
             colors.extend(hex_colors)
             
-            # Buscar rgb/rgba
             rgb_colors = re.findall(r'rgba?\([^)]+\)', css_text)
             colors.extend(rgb_colors)
     
-    # Buscar en atributos style inline
     for tag in soup.find_all(style=True):
         style_attr = tag.get('style', '')
         hex_colors = re.findall(r'#[0-9a-fA-F]{6}', style_attr)
@@ -1163,7 +1148,6 @@ def extract_colors_from_css(soup):
     return colors
 
 def extract_design_dna_from_url(url, timeout=10):
-    """Scraper de diseño de una URL de competidor"""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (LocalSEOGapAnalyzer/2.6)'
@@ -1176,29 +1160,25 @@ def extract_design_dna_from_url(url, timeout=10):
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Extraer colores
         all_colors = extract_colors_from_css(soup)
         
-        # Detectar gradientes
         has_gradients = 'linear-gradient' in response.text or 'radial-gradient' in response.text
         
-        # Extraer CTAs (botones con enlaces)
         cta_texts = []
         for btn in soup.find_all(['a', 'button'], limit=10):
             text = btn.get_text(strip=True)
-            if text and len(text) < 50:  # Evitar textos largos
+            if text and len(text) < 50:
                 cta_texts.append(text)
         
-        # Detectar secciones comunes
         has_testimonials = bool(soup.find(['section', 'div'], class_=re.compile(r'testimon', re.I)))
         has_gallery = bool(soup.find(['section', 'div'], class_=re.compile(r'gallery|galeria', re.I)))
         has_faq = bool(soup.find(['section', 'div'], class_=re.compile(r'faq|preguntas', re.I)))
         
         return {
             'url': url,
-            'colors': all_colors[:20],  # Top 20 colores
+            'colors': all_colors[:20],
             'has_gradients': has_gradients,
-            'cta_texts': cta_texts[:5],  # Top 5 CTAs
+            'cta_texts': cta_texts[:5],
             'sections': {
                 'testimonials': has_testimonials,
                 'gallery': has_gallery,
@@ -1210,13 +1190,11 @@ def extract_design_dna_from_url(url, timeout=10):
         return None
 
 def consolidate_design_dna(dna_list):
-    """Consolida múltiples design DNAs en un perfil unificado"""
     if not dna_list:
         return None
     
     from collections import Counter
     
-    # Consolidar colores (más frecuentes)
     all_colors = []
     for dna in dna_list:
         if dna and dna.get('colors'):
@@ -1225,7 +1203,6 @@ def consolidate_design_dna(dna_list):
     color_counts = Counter(all_colors)
     top_colors = [color for color, _ in color_counts.most_common(10)]
     
-    # Consolidar CTAs
     all_ctas = []
     for dna in dna_list:
         if dna and dna.get('cta_texts'):
@@ -1234,7 +1211,6 @@ def consolidate_design_dna(dna_list):
     cta_counts = Counter(all_ctas)
     top_ctas = [cta for cta, _ in cta_counts.most_common(5)]
     
-    # Consolidar secciones (mayoría gana)
     sections_votes = {
         'testimonials': 0,
         'gallery': 0,
@@ -1303,7 +1279,6 @@ SUBSERVICE_PATTERNS = {
 }
 
 def extract_subservices_from_urls(urls, service_key, lang="es"):
-    """Detecta subservicios del sitemap del usuario"""
     subservices = []
     patterns = SUBSERVICE_PATTERNS.get(lang, {}).get(service_key, [])
     
@@ -1313,14 +1288,11 @@ def extract_subservices_from_urls(urls, service_key, lang="es"):
         
         url_lower = url.lower()
         
-        # Buscar patrones de subservicios
         for pattern in patterns:
             if pattern in url_lower:
-                # Extraer título del slug
                 path = urlparse(url).path
                 slug = path.strip('/').split('/')[-1]
                 
-                # Crear entrada de subservicio
                 subservices.append({
                     'name': slug.replace('-', ' ').title(),
                     'url': url,
@@ -1328,7 +1300,6 @@ def extract_subservices_from_urls(urls, service_key, lang="es"):
                 })
                 break
     
-    # Eliminar duplicados por URL
     seen = set()
     unique_subservices = []
     for sub in subservices:
@@ -1343,15 +1314,10 @@ def extract_subservices_from_urls(urls, service_key, lang="es"):
 # ============================================
 
 def get_base_template(lang="es", design_profile=None):
-    """Retorna plantilla HTML base responsive con diseño adaptado de competidores"""
-    
-    # Colores por defecto (genéricos)
     primary_color = "#667eea"
     secondary_color = "#764ba2"
     accent_color = "#ff6b6b"
-    text_color = "#333"
     
-    # Si hay design_profile, usar colores de competidores
     if design_profile and design_profile.get('primary_colors'):
         colors = design_profile['primary_colors']
         if len(colors) >= 1:
@@ -1361,73 +1327,70 @@ def get_base_template(lang="es", design_profile=None):
         if len(colors) >= 3:
             accent_color = colors[2]
     
-    # Detectar si usar gradiente (basado en competidores)
     use_gradient = False
     if design_profile:
-        # Si al menos 2 de 3 competidores usan gradientes
         use_gradient = design_profile.get('analyzed_sites', 0) >= 2
     
-    # Header background (gradiente o sólido)
     if use_gradient:
         header_bg = f"background: linear-gradient(135deg, {primary_color} 0%, {secondary_color} 100%);"
     else:
         header_bg = f"background: {primary_color};"
     
     if lang == "es":
-        template = """
+        template = f"""
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="{SERVICIO_DISPLAY} en {ZONA_DISPLAY} - Servicio profesional {HORA_SERVICIO}. Presupuesto sin compromiso. Llamar ahora.">
-    <title>{SERVICIO_DISPLAY} en {ZONA_DISPLAY} | Servicio Profesional {HORA_SERVICIO}</title>
+    <meta name="description" content="{{SERVICIO_DISPLAY}} en {{ZONA_DISPLAY}} - Servicio profesional {{HORA_SERVICIO}}. Presupuesto sin compromiso. Llamar ahora.">
+    <title>{{SERVICIO_DISPLAY}} en {{ZONA_DISPLAY}} | Servicio Profesional {{HORA_SERVICIO}}</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
-        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 60px 0; text-align: center; }
-        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
-        .subtitle { font-size: 1.2rem; opacity: 0.9; }
-        .cta-button { display: inline-block; background: #ff6b6b; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
-        .cta-button:hover { transform: scale(1.05); }
-        section { padding: 60px 0; }
-        h2 { font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }
-        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .card h3 { color: #667eea; margin-bottom: 15px; }
-        .zones-list, .services-list { list-style: none; margin-top: 20px; }
-        .zones-list li, .services-list li { padding: 10px 0; border-bottom: 1px solid #eee; }
-        .zones-list a, .services-list a { color: #667eea; text-decoration: none; font-weight: 500; }
-        .zones-list a:hover, .services-list a:hover { text-decoration: underline; }
-        .faq { background: #f8f9fa; }
-        .faq-item { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }
-        .faq-item h3 { font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }
-        footer { background: #2c3e50; color: white; text-align: center; padding: 40px 0; }
-        @media (max-width: 768px) {
-            h1 { font-size: 1.8rem; }
-            .grid { grid-template-columns: 1fr; }
-        }
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 0 20px; }}
+        header {{ {header_bg} color: white; padding: 60px 0; text-align: center; }}
+        h1 {{ font-size: 2.5rem; margin-bottom: 1rem; }}
+        .subtitle {{ font-size: 1.2rem; opacity: 0.9; }}
+        .cta-button {{ display: inline-block; background: {accent_color}; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }}
+        .cta-button:hover {{ transform: scale(1.05); }}
+        section {{ padding: 60px 0; }}
+        h2 {{ font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }}
+        .card {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }}
+        .card h3 {{ color: {primary_color}; margin-bottom: 15px; }}
+        .zones-list, .services-list {{ list-style: none; margin-top: 20px; }}
+        .zones-list li, .services-list li {{ padding: 10px 0; border-bottom: 1px solid #eee; }}
+        .zones-list a, .services-list a {{ color: {primary_color}; text-decoration: none; font-weight: 500; }}
+        .zones-list a:hover, .services-list a:hover {{ text-decoration: underline; }}
+        .faq {{ background: #f8f9fa; }}
+        .faq-item {{ background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }}
+        .faq-item h3 {{ font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }}
+        footer {{ background: #2c3e50; color: white; text-align: center; padding: 40px 0; }}
+        @media (max-width: 768px) {{
+            h1 {{ font-size: 1.8rem; }}
+            .grid {{ grid-template-columns: 1fr; }}
+        }}
     </style>
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>{SERVICIO_DISPLAY} en {ZONA_DISPLAY}</h1>
-            <p class="subtitle">Servicio profesional de {SERVICIO} en {ZONA_DISPLAY} {HORA_SERVICIO}</p>
-            <a href="tel:{TELEFONO}" class="cta-button">☎ Llamar Ahora</a>
+            <h1>{{SERVICIO_DISPLAY}} en {{ZONA_DISPLAY}}</h1>
+            <p class="subtitle">Servicio profesional de {{SERVICIO}} en {{ZONA_DISPLAY}} {{HORA_SERVICIO}}</p>
+            <a href="tel:{{TELEFONO}}" class="cta-button">☎ Llamar Ahora</a>
         </div>
     </header>
 
     <section>
         <div class="container">
-            <h2>Tu {SERVICIO_DISPLAY} de confianza en {ZONA_DISPLAY}</h2>
-            <p>Ofrecemos servicios profesionales de {SERVICIO} en {ZONA_DISPLAY} con años de experiencia. Nuestro equipo está cualificado para resolver cualquier problema relacionado con {SERVICIO_DESCRIPCION}.</p>
+            <h2>Tu {{SERVICIO_DISPLAY}} de confianza en {{ZONA_DISPLAY}}</h2>
+            <p>Ofrecemos servicios profesionales de {{SERVICIO}} en {{ZONA_DISPLAY}} con años de experiencia. Nuestro equipo está cualificado para resolver cualquier problema relacionado con {{SERVICIO_DESCRIPCION}}.</p>
             
             <div class="grid">
                 <div class="card">
                     <h3>✓ Profesionales Cualificados</h3>
-                    <p>Equipo con años de experiencia en {SERVICIO}</p>
+                    <p>Equipo con años de experiencia en {{SERVICIO}}</p>
                 </div>
                 <div class="card">
                     <h3>✓ Presupuesto Sin Compromiso</h3>
@@ -1441,107 +1404,109 @@ def get_base_template(lang="es", design_profile=None):
         </div>
     </section>
 
+    {{SECCIONES_CONDICIONALES}}
+
     <section class="services-section">
         <div class="container">
-            <h2>Nuestros Servicios de {SERVICIO_DISPLAY}</h2>
-            {ENLACES_SUBSERVICIOS}
+            <h2>Nuestros Servicios de {{SERVICIO_DISPLAY}}</h2>
+            {{ENLACES_SUBSERVICIOS}}
         </div>
     </section>
 
     <section>
         <div class="container">
-            <h2>También atendemos en zonas cercanas a {ZONA_DISPLAY}</h2>
-            {ENLACES_ZONAS}
+            <h2>También atendemos en zonas cercanas a {{ZONA_DISPLAY}}</h2>
+            {{ENLACES_ZONAS}}
         </div>
     </section>
 
     <section class="faq">
         <div class="container">
             <h2>Preguntas Frecuentes</h2>
-            {FAQ_CONTENT}
+            {{FAQ_CONTENT}}
         </div>
     </section>
 
     <footer>
         <div class="container">
-            <p>&copy; 2026 {SERVICIO_DISPLAY} {ZONA_DISPLAY}. Todos los derechos reservados.</p>
-            <p>Servicio profesional de {SERVICIO} en {ZONA_DISPLAY} y alrededores</p>
+            <p>&copy; 2026 {{SERVICIO_DISPLAY}} {{ZONA_DISPLAY}}. Todos los derechos reservados.</p>
+            <p>Servicio profesional de {{SERVICIO}} en {{ZONA_DISPLAY}} y alrededores</p>
         </div>
     </footer>
 
     <script type="application/ld+json">
-    {
+    {{
         "@context": "https://schema.org",
         "@type": "LocalBusiness",
-        "name": "{SERVICIO_DISPLAY} {ZONA_DISPLAY}",
-        "description": "Servicio profesional de {SERVICIO} en {ZONA_DISPLAY}",
-        "address": {
+        "name": "{{SERVICIO_DISPLAY}} {{ZONA_DISPLAY}}",
+        "description": "Servicio profesional de {{SERVICIO}} en {{ZONA_DISPLAY}}",
+        "address": {{
             "@type": "PostalAddress",
-            "addressLocality": "{ZONA_DISPLAY}",
+            "addressLocality": "{{ZONA_DISPLAY}}",
             "addressCountry": "ES"
-        },
-        "telephone": "{TELEFONO}",
-        "areaServed": "{ZONA_DISPLAY}"
-    }
+        }},
+        "telephone": "{{TELEFONO}}",
+        "areaServed": "{{ZONA_DISPLAY}}"
+    }}
     </script>
 </body>
 </html>
 """
-    else:  # English
-        template = """
+    else:
+        template = f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="{SERVICIO_DISPLAY} in {ZONA_DISPLAY} - Professional {HORA_SERVICIO} service. Free estimates. Call now.">
-    <title>{SERVICIO_DISPLAY} in {ZONA_DISPLAY} | Professional {HORA_SERVICIO} Service</title>
+    <meta name="description" content="{{SERVICIO_DISPLAY}} in {{ZONA_DISPLAY}} - Professional {{HORA_SERVICIO}} service. Free estimates. Call now.">
+    <title>{{SERVICIO_DISPLAY}} in {{ZONA_DISPLAY}} | Professional {{HORA_SERVICIO}} Service</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
-        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 60px 0; text-align: center; }
-        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
-        .subtitle { font-size: 1.2rem; opacity: 0.9; }
-        .cta-button { display: inline-block; background: #ff6b6b; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
-        .cta-button:hover { transform: scale(1.05); }
-        section { padding: 60px 0; }
-        h2 { font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }
-        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .card h3 { color: #667eea; margin-bottom: 15px; }
-        .zones-list, .services-list { list-style: none; margin-top: 20px; }
-        .zones-list li, .services-list li { padding: 10px 0; border-bottom: 1px solid #eee; }
-        .zones-list a, .services-list a { color: #667eea; text-decoration: none; font-weight: 500; }
-        .zones-list a:hover, .services-list a:hover { text-decoration: underline; }
-        .faq { background: #f8f9fa; }
-        .faq-item { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }
-        .faq-item h3 { font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }
-        footer { background: #2c3e50; color: white; text-align: center; padding: 40px 0; }
-        @media (max-width: 768px) {
-            h1 { font-size: 1.8rem; }
-            .grid { grid-template-columns: 1fr; }
-        }
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 0 20px; }}
+        header {{ {header_bg} color: white; padding: 60px 0; text-align: center; }}
+        h1 {{ font-size: 2.5rem; margin-bottom: 1rem; }}
+        .subtitle {{ font-size: 1.2rem; opacity: 0.9; }}
+        .cta-button {{ display: inline-block; background: {accent_color}; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; transition: transform 0.3s; }}
+        .cta-button:hover {{ transform: scale(1.05); }}
+        section {{ padding: 60px 0; }}
+        h2 {{ font-size: 2rem; margin-bottom: 1.5rem; color: #2c3e50; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 30px; }}
+        .card {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }}
+        .card h3 {{ color: {primary_color}; margin-bottom: 15px; }}
+        .zones-list, .services-list {{ list-style: none; margin-top: 20px; }}
+        .zones-list li, .services-list li {{ padding: 10px 0; border-bottom: 1px solid #eee; }}
+        .zones-list a, .services-list a {{ color: {primary_color}; text-decoration: none; font-weight: 500; }}
+        .zones-list a:hover, .services-list a:hover {{ text-decoration: underline; }}
+        .faq {{ background: #f8f9fa; }}
+        .faq-item {{ background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; }}
+        .faq-item h3 {{ font-size: 1.1rem; color: #2c3e50; margin-bottom: 10px; }}
+        footer {{ background: #2c3e50; color: white; text-align: center; padding: 40px 0; }}
+        @media (max-width: 768px) {{
+            h1 {{ font-size: 1.8rem; }}
+            .grid {{ grid-template-columns: 1fr; }}
+        }}
     </style>
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>{SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h1>
-            <p class="subtitle">Professional {SERVICIO} service in {ZONA_DISPLAY} {HORA_SERVICIO}</p>
-            <a href="tel:{TELEFONO}" class="cta-button">☎ Call Now</a>
+            <h1>{{SERVICIO_DISPLAY}} in {{ZONA_DISPLAY}}</h1>
+            <p class="subtitle">Professional {{SERVICIO}} service in {{ZONA_DISPLAY}} {{HORA_SERVICIO}}</p>
+            <a href="tel:{{TELEFONO}}" class="cta-button">☎ Call Now</a>
         </div>
     </header>
 
     <section>
         <div class="container">
-            <h2>Your Trusted {SERVICIO_DISPLAY} in {ZONA_DISPLAY}</h2>
-            <p>We offer professional {SERVICIO} services in {ZONA_DISPLAY} with years of experience. Our qualified team can solve any problem related to {SERVICIO_DESCRIPCION}.</p>
+            <h2>Your Trusted {{SERVICIO_DISPLAY}} in {{ZONA_DISPLAY}}</h2>
+            <p>We offer professional {{SERVICIO}} services in {{ZONA_DISPLAY}} with years of experience. Our qualified team can solve any problem related to {{SERVICIO_DESCRIPCION}}.</p>
             
             <div class="grid">
                 <div class="card">
                     <h3>✓ Qualified Professionals</h3>
-                    <p>Team with years of experience in {SERVICIO}</p>
+                    <p>Team with years of experience in {{SERVICIO}}</p>
                 </div>
                 <div class="card">
                     <h3>✓ Free Estimates</h3>
@@ -1555,48 +1520,50 @@ def get_base_template(lang="es", design_profile=None):
         </div>
     </section>
 
+    {{SECCIONES_CONDICIONALES}}
+
     <section class="services-section">
         <div class="container">
-            <h2>Our {SERVICIO_DISPLAY} Services</h2>
-            {ENLACES_SUBSERVICIOS}
+            <h2>Our {{SERVICIO_DISPLAY}} Services</h2>
+            {{ENLACES_SUBSERVICIOS}}
         </div>
     </section>
 
     <section>
         <div class="container">
-            <h2>We also serve areas near {ZONA_DISPLAY}</h2>
-            {ENLACES_ZONAS}
+            <h2>We also serve areas near {{ZONA_DISPLAY}}</h2>
+            {{ENLACES_ZONAS}}
         </div>
     </section>
 
     <section class="faq">
         <div class="container">
             <h2>Frequently Asked Questions</h2>
-            {FAQ_CONTENT}
+            {{FAQ_CONTENT}}
         </div>
     </section>
 
     <footer>
         <div class="container">
-            <p>&copy; 2026 {SERVICIO_DISPLAY} {ZONA_DISPLAY}. All rights reserved.</p>
-            <p>Professional {SERVICIO} service in {ZONA_DISPLAY} and surrounding areas</p>
+            <p>&copy; 2026 {{SERVICIO_DISPLAY}} {{ZONA_DISPLAY}}. All rights reserved.</p>
+            <p>Professional {{SERVICIO}} service in {{ZONA_DISPLAY}} and surrounding areas</p>
         </div>
     </footer>
 
     <script type="application/ld+json">
-    {
+    {{
         "@context": "https://schema.org",
         "@type": "LocalBusiness",
-        "name": "{SERVICIO_DISPLAY} {ZONA_DISPLAY}",
-        "description": "Professional {SERVICIO} service in {ZONA_DISPLAY}",
-        "address": {
+        "name": "{{SERVICIO_DISPLAY}} {{ZONA_DISPLAY}}",
+        "description": "Professional {{SERVICIO}} service in {{ZONA_DISPLAY}}",
+        "address": {{
             "@type": "PostalAddress",
-            "addressLocality": "{ZONA_DISPLAY}",
+            "addressLocality": "{{ZONA_DISPLAY}}",
             "addressCountry": "US"
-        },
-        "telephone": "{TELEFONO}",
-        "areaServed": "{ZONA_DISPLAY}"
-    }
+        }},
+        "telephone": "{{TELEFONO}}",
+        "areaServed": "{{ZONA_DISPLAY}}"
+    }}
     </script>
 </body>
 </html>
@@ -1605,7 +1572,6 @@ def get_base_template(lang="es", design_profile=None):
     return template
 
 def get_service_description(service_key, lang="es"):
-    """Retorna descripción específica del servicio"""
     descriptions = {
         "es": {
             "cerrajero": "apertura de puertas, cambio de cerraduras, copia de llaves y servicios de emergencia",
@@ -1646,7 +1612,6 @@ def get_service_description(service_key, lang="es"):
     return descriptions.get(lang, {}).get(service_key, "servicios profesionales")
 
 def get_service_hora(service_key, lang="es"):
-    """Determina si el servicio es típicamente 24h o horario normal"""
     emergency_services = ["cerrajero", "fontanero", "electricista", "cristalero", 
                          "locksmith", "plumber", "electrician", "glazier"]
     
@@ -1656,7 +1621,6 @@ def get_service_hora(service_key, lang="es"):
         return "" if lang == "es" else ""
 
 def get_faq_content(service_key, zone, lang="es"):
-    """Genera FAQs específicas por servicio"""
     if lang == "es":
         faqs = {
             "cerrajero": [
@@ -1684,7 +1648,6 @@ def get_faq_content(service_key, zone, lang="es"):
             ],
         }
     
-    # FAQs genéricas si no hay específicas
     default_faqs = [
         ("¿Por qué elegirnos?" if lang == "es" else "Why choose us?", 
          "Somos profesionales con años de experiencia en {ZONA}." if lang == "es" else "We are professionals with years of experience in {ZONA}."),
@@ -1703,38 +1666,29 @@ def get_faq_content(service_key, zone, lang="es"):
     return html
 
 def render_template(service_key, zone, user_zones, subservices, lang="es", telefono="+34900000000", design_profile=None):
-    """Renderiza plantilla HTML con datos reales y diseño adaptado"""
     template = get_base_template(lang, design_profile)
     
-    # Datos básicos
     service_display = SERVICES.get(lang, {}).get(service_key, service_key).title()
     zona_display = zone.replace('-', ' ').title()
     servicio_descripcion = get_service_description(service_key, lang)
     hora_servicio = get_service_hora(service_key, lang)
     
-    # Enlaces a zonas cercanas
     enlaces_zonas_html = '<ul class="zones-list">\n'
-    for z in sorted(user_zones)[:10]:  # Máximo 10 zonas
-        if z != zone:  # No enlazar a sí misma
+    for z in sorted(user_zones)[:10]:
+        if z != zone:
             z_display = z.replace('-', ' ').title()
             enlaces_zonas_html += f'    <li><a href="/{service_key}-{z}/">{service_display} en {z_display}</a></li>\n'
     enlaces_zonas_html += '</ul>'
     
-    # Enlaces a subservicios
     if subservices:
         enlaces_sub_html = '<ul class="services-list">\n'
-        for sub in subservices[:8]:  # Máximo 8 subservicios
+        for sub in subservices[:8]:
             enlaces_sub_html += f'    <li><a href="{sub["url"]}">{sub["name"]}</a></li>\n'
         enlaces_sub_html += '</ul>'
     else:
         enlaces_sub_html = '<p>' + ('Consulta todos nuestros servicios especializados.' if lang == 'es' else 'Check out all our specialized services.') + '</p>'
     
-    # FAQ
     faq_html = get_faq_content(service_key, zona_display, lang)
-    
-    # ============================================
-    # SECCIONES CONDICIONALES SEGÚN DESIGN PROFILE
-    # ============================================
     
     testimonials_html = ""
     gallery_html = ""
@@ -1742,7 +1696,6 @@ def render_template(service_key, zone, user_zones, subservices, lang="es", telef
     if design_profile and design_profile.get('recommended_sections'):
         sections = design_profile['recommended_sections']
         
-        # Sección Testimonials (si competidores la tienen)
         if sections.get('testimonials', False):
             if lang == 'es':
                 testimonials_html = """
@@ -1789,7 +1742,6 @@ def render_template(service_key, zone, user_zones, subservices, lang="es", telef
     </section>
 """
         
-        # Sección Gallery (si competidores la tienen)
         if sections.get('gallery', False):
             if lang == 'es':
                 gallery_html = """
@@ -1850,11 +1802,8 @@ def render_template(service_key, zone, user_zones, subservices, lang="es", telef
     </section>
 """
     
-    # Insertar secciones condicionales en el template
-    # Buscar el punto de inserción (antes de la sección de zonas cercanas)
     sections_insertion = testimonials_html + gallery_html
     
-    # Reemplazar placeholders
     html = template.replace('{SERVICIO}', service_key)
     html = html.replace('{SERVICIO_DISPLAY}', service_display)
     html = html.replace('{ZONA}', zone)
@@ -1977,7 +1926,6 @@ st.divider()
 col1, col2 = st.columns(2)
 
 with col1:
-    # Obtener historial de dominios de usuario
     user_history = get_domain_history('user')
     
     if user_history:
@@ -2021,7 +1969,6 @@ with col2:
         else:
             st.error(get_text('invalid_domain', lang))
     
-    # Botón para limpiar historial
     if user_history or get_domain_history('competitor'):
         if st.button(get_text('clear_history', lang), key='clear_history_btn'):
             clear_domain_history()
@@ -2032,12 +1979,10 @@ st.divider()
 
 st.subheader(f"🔍 {get_text('competitors_required', lang)}")
 
-# Obtener historial de competidores
 comp_history = get_domain_history('competitor')
 
 col1, col2 = st.columns(2)
 with col1:
-    # Competidor 1
     if comp_history:
         comp1_options = [get_text('new_domain', lang)] + comp_history
         selected_comp1 = st.selectbox(
@@ -2063,7 +2008,6 @@ with col1:
             placeholder=get_text('domain_placeholder', lang)
         )
     
-    # Competidor 2
     if comp_history:
         comp2_options = [get_text('new_domain', lang)] + comp_history
         selected_comp2 = st.selectbox(
@@ -2090,7 +2034,6 @@ with col1:
         )
 
 with col2:
-    # Competidor 3
     if comp_history:
         comp3_options = [get_text('new_domain', lang)] + comp_history
         selected_comp3 = st.selectbox(
@@ -2133,7 +2076,6 @@ with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session
     col1, col2 = st.columns(2)
     
     with col1:
-        # Competidores 4-7 con autocompletado
         if comp_history:
             comp4_options = [get_text('new_domain', lang)] + comp_history
             selected_comp4 = st.selectbox(f"{get_text('competitor', lang)} 4", options=comp4_options, index=0, key="comp4_select")
@@ -2171,7 +2113,6 @@ with st.expander(f"➕ {get_text('add_competitors', lang)}", expanded=st.session
             comp7_input = st.text_input(f"{get_text('competitor', lang)} 7", placeholder=get_text('domain_placeholder', lang), key="comp7")
     
     with col2:
-        # Competidores 8-10 con autocompletado
         if comp_history:
             comp8_options = [get_text('new_domain', lang)] + comp_history
             selected_comp8 = st.selectbox(f"{get_text('competitor', lang)} 8", options=comp8_options, index=0, key="comp8_select")
@@ -2491,7 +2432,6 @@ if analyze_button:
     st.session_state.home_zone = home_zone
     st.session_state.total_competitors = total_valid
     
-    # Agregar dominios al historial
     add_to_domain_history(user_domain_input, 'user')
     for comp_input in all_competitor_inputs:
         if comp_input:
@@ -2709,9 +2649,8 @@ if st.session_state.analysis_done:
         st.subheader(get_text('generate_pages', lang))
         
         if gaps_data:
-            st.info("💡 " + ("Selecciona los gaps para los que deseas generar páginas HTML" if lang == "es" else "Select gaps to generate HTML pages"))
+            st.info("💡 " + ("Selecciona un gap para generar la página HTML" if lang == "es" else "Select a gap to generate the HTML page"))
             
-            # Extraer subservicios del sitemap del usuario
             user_urls = st.session_state.get('all_urls', {}).get('user', [])
             selected_service = st.session_state.get('selected_service', selected_service)
             subservices = extract_subservices_from_urls(user_urls, selected_service, lang)
@@ -2719,15 +2658,13 @@ if st.session_state.analysis_done:
             if subservices:
                 st.success(f"✅ {len(subservices)} " + ("subservicios detectados en tu sitemap" if lang == "es" else "subservices detected in your sitemap"))
             
-            # Obtener zonas existentes del usuario
             user_zones = set([z for z, _, _ in all_zones_data.get('user', []) if z])
             
-            # Tabla con checkboxes para seleccionar gaps
             st.markdown("### " + get_text('select_gaps', lang))
             
             selected_gaps = []
             
-            for idx, gap in enumerate(gaps_data[:20]):  # Limitar a 20 para no saturar UI
+            for idx, gap in enumerate(gaps_data[:20]):
                 col1, col2, col3, col4 = st.columns([0.5, 2, 1, 1])
                 
                 with col1:
@@ -2757,4 +2694,78 @@ if st.session_state.analysis_done:
             if selected_gaps:
                 st.success(f"✅ {len(selected_gaps)} " + ("gaps seleccionados" if lang == "es" else "gaps selected"))
                 
-                #
+                telefono = st.text_input(
+                    "📞 " + ("Teléfono de contacto" if lang == "es" else "Contact phone"),
+                    value="+34900000000",
+                    placeholder="+34900000000"
+                )
+                
+                st.divider()
+                
+                selected_zone = st.selectbox(
+                    get_text('preview_template', lang),
+                    options=[g['zone_display'] for g in selected_gaps],
+                    key='zone_selector'
+                )
+                
+                if st.button("👁️ " + get_text('preview_template', lang), type="primary", use_container_width=True):
+                    gap_obj = next((g for g in selected_gaps if g['zone_display'] == selected_zone), None)
+                    
+                    if gap_obj:
+                        zone_raw = gap_obj['zone']
+                        
+                        with st.spinner("🎨 " + ("Extrayendo Design DNA de competidores..." if lang == "es" else "Extracting Design DNA from competitors...")):
+                            comp_urls = []
+                            for gap in gaps_data:
+                                if gap.get('_zone_raw') == zone_raw:
+                                    urls_text = gap.get(get_text('competitor_urls', lang), '')
+                                    if urls_text:
+                                        comp_urls = urls_text.split('\n')[:3]
+                                    break
+                            
+                            dna_list = []
+                            if comp_urls:
+                                progress = st.progress(0)
+                                for idx, url in enumerate(comp_urls):
+                                    dna = extract_design_dna_from_url(url.strip())
+                                    if dna:
+                                        dna_list.append(dna)
+                                    progress.progress((idx + 1) / len(comp_urls))
+                                progress.empty()
+                            
+                            design_profile = consolidate_design_dna(dna_list) if dna_list else None
+                            
+                            if design_profile:
+                                st.success(f"✅ {design_profile.get('analyzed_sites', 0)} " + ("sitios analizados" if lang == "es" else "sites analyzed"))
+                                
+                                with st.expander("🎨 Design DNA Profile"):
+                                    st.json(design_profile)
+                        
+                        html_content = render_template(
+                            service_key=selected_service,
+                            zone=zone_raw,
+                            user_zones=user_zones,
+                            subservices=subservices,
+                            lang=lang,
+                            telefono=telefono,
+                            design_profile=design_profile
+                        )
+                        
+                        st.divider()
+                        st.subheader("📄 Preview")
+                        
+                        st.download_button(
+                            "💾 " + ("Descargar HTML" if lang == "es" else "Download HTML"),
+                            data=html_content,
+                            file_name=f"{selected_service}-{zone_raw}.html",
+                            mime="text/html",
+                            use_container_width=True
+                        )
+                        
+                        st.components.v1.html(html_content, height=600, scrolling=True)
+            
+            else:
+                st.info("ℹ️ " + ("Selecciona al menos 1 gap para continuar" if lang == "es" else "Select at least 1 gap to continue"))
+        
+        else:
+            st.info("ℹ️ " + ("No hay gaps detectados. ¡Ya cubres todas las zonas!" if lang == "es" else "No gaps detected. You already cover all zones!"))
